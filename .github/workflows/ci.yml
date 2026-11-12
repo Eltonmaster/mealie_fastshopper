@@ -21,6 +21,13 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # Catches mistakes in the workflow files themselves, e.g. referencing a
+      # context that doesn't exist (which silently evaluates to empty).
+      - name: Lint workflows
+        uses: docker://rhysd/actionlint:1.7.7
+        with:
+          args: -color -shellcheck=
+
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
