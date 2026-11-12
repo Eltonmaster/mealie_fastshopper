@@ -24,6 +24,30 @@ interface MealieApi {
     @GET("api/households/shopping/lists/{id}")
     suspend fun getShoppingList(@Path("id") id: String): ShoppingList
 
+    @GET("api/foods")
+    suspend fun getFoods(
+        @Query("page") page: Int = 1,
+        @Query("perPage") perPage: Int = -1,
+    ): Page<FoodRef>
+
+    @POST("api/foods")
+    suspend fun createFood(@Body food: FoodCreate): FoodRef
+
+    @GET("api/units")
+    suspend fun getUnits(
+        @Query("page") page: Int = 1,
+        @Query("perPage") perPage: Int = -1,
+    ): Page<UnitRef>
+
+    @POST("api/units")
+    suspend fun createUnit(@Body unit: UnitCreate): UnitRef
+
+    @GET("api/groups/labels")
+    suspend fun getLabels(
+        @Query("page") page: Int = 1,
+        @Query("perPage") perPage: Int = -1,
+    ): Page<LabelRef>
+
     @POST("api/households/shopping/items")
     suspend fun createItem(@Body item: ItemWrite): ResponseBody
 

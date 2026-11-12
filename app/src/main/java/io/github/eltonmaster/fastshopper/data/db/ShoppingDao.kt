@@ -103,5 +103,86 @@ abstract class ShoppingDao {
         deleteAllItems()
         deleteAllLabelOrder()
         deleteLists()
+        deleteFoods()
+        deleteUnits()
+        deleteLabels()
+        deleteAllHistory()
     }
+
+    @Query("DELETE FROM container_history")
+    protected abstract suspend fun deleteAllHistory()
+
+    // ---- Catalog: foods, units, labels -------------------------------------------------------
+
+    @Query("SELECT * FROM foods ORDER BY name COLLATE NOCASE")
+    abstract fun observeFoods(): Flow<List<FoodEntity>>
+
+    @Query("SELECT * FROM units ORDER BY name COLLATE NOCASE")
+    abstract fun observeUnits(): Flow<List<UnitEntity>>
+
+    @Query("SELECT * FROM labels ORDER BY name COLLATE NOCASE")
+    abstract fun observeLabels(): Flow<List<LabelEntity>>
+
+    @Query("SELECT COUNT(*) FROM foods")
+    abstract suspend fun foodCount(): Int
+
+    @Query("DELETE FROM foods")
+    protected abstract suspend fun deleteFoods()
+
+    @Query("DELETE FROM units")
+    protected abstract suspend fun deleteUnits()
+
+    @Query("DELETE FROM labels")
+    protected abstract suspend fun deleteLabels()
+
+    @Upsert
+    abstract suspend fun upsertFood(food: FoodEntity)
+
+    @Upsert
+    abstract suspend fun upsertUnit(unit: UnitEntity)
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    protected abstract suspend fun insertFoods(foods: List<FoodEntity>)
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    protected abstract suspend fun insertUnits(units: List<UnitEntity>)
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    protected abstract suspend fun insertLabels(labels: List<LabelEntity>)
+
+    @Transaction
+    open suspend fun replaceCatalog(foods: List<FoodEntity>, units: List<UnitEntity>, labels: List<LabelEntity>) {
+        deleteFoods()
+        insertFoods(foods)
+        deleteUnits()
+        insertUnits(units)
+        deleteLabels()
+        insertLabels(labels)
+    }
+
+    // ---- Container history -------------------------------------------------------------------
+
+    @Query("SELECT * FROM container_history")
+    abstract fun observeHistory(): Flow<List<ContainerHistory>>
+
+    @Query("SELECT * FROM container_history WHERE foodId = :foodId")
+    abstract suspend fun history(foodId: String): ContainerHistory?
+
+    @Upsert
+    abstract suspend fun upsertHistory(entry: ContainerHistory)
+
+    @Query("SELECT id FROM items WHERE listId = :listId")
+    abstract suspend fun itemIds(listId: String): List<String>
+
+    @Query("SELECT MAX(position) FROM items WHERE listId = :listId")
+    abstract suspend fun maxPosition(listId: String): Int?
+
+    @Query("SELECT * FROM foods WHERE id = :id")
+    abstract suspend fun food(id: String): FoodEntity?
+
+    @Query("SELECT * FROM units WHERE id = :id")
+    abstract suspend fun unit(id: String): UnitEntity?
+
+    @Query("SELECT * FROM labels WHERE id = :id")
+    abstract suspend fun label(id: String): LabelEntity?
 }
