@@ -33,16 +33,20 @@ Requires JDK 17 and the Android SDK (API 35).
 ## CI/CD
 
 - **CI** (`.github/workflows/ci.yml`) runs on every pull request and push to `main`: Android lint, unit tests, a debug APK, and a release build signed with a throwaway key so signing problems show up before a release.
-- **Release** (`.github/workflows/release.yml`) runs when you push a tag like `v0.2.0`. It runs lint and tests, builds a release APK signed with your key, and publishes it to GitHub Releases with generated notes. Tags with a suffix (`v0.2.0-beta.1`) become pre-releases.
+- **Release** (`.github/workflows/release.yml`) runs when the version in `version.properties` changes on `main`, or when you push a tag like `v0.2.0`. It runs lint and tests, builds a release APK signed with your key, and publishes it to GitHub Releases with generated notes. Tags with a suffix (`v0.2.0-beta.1`) become pre-releases.
 - **Dependabot** opens weekly grouped PRs for Gradle dependencies and GitHub Actions.
 
 ### Releasing
 
-The version comes from the tag: `v1.2.3` becomes versionName `1.2.3` and versionCode `10203` (minor and patch must stay below 100).
+The version lives in `version.properties`. To release, bump it (for example `version=0.3.0`) in a PR or directly on GitHub and merge to `main`. CI then creates the tag `v0.3.0` and publishes the signed APK. If the tag already exists, nothing happens.
+
+`1.2.3` becomes versionName `1.2.3` and versionCode `10203` (minor and patch must stay below 100). A suffix like `0.3.0-beta.1` makes a pre-release.
+
+Pushing a tag yourself still works and builds that exact version:
 
 ```
-git tag v0.2.0
-git push origin v0.2.0
+git tag v0.3.0
+git push origin v0.3.0
 ```
 
 ### One-time signing setup
