@@ -1,7 +1,13 @@
 name: Release
 
+# Two ways to release:
+# - Bump the version in version.properties and merge to main: the tag and
+#   release are created automatically (nothing happens if the tag exists).
+# - Push a v1.2.3 tag (or publish a release with a new tag on GitHub).
 on:
   push:
+    branches: [main]
+    paths: [version.properties]
     tags: ["v*"]
 
 concurrency:
@@ -12,22 +18,35 @@ permissions:
   contents: write
 
 jobs:
-  release:
-    name: Signed release APK
+  version:
+    name: Determine version
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    outputs:
+      skip: ${{ needs.version.outputs.skip }}
+      tag: ${{ needs.version.outputs.tag }}
+      name: ${{ needs.version.outputs.name }}
+      code: ${{ needs.version.outputs.code }}
+      prerelease: ${{ needs.version.outputs.prerelease }}
     steps:
       - uses: actions/checkout@v4
 
       # v1.2.3 -> versionName 1.2.3, versionCode 10203. A suffix like v1.2.3-beta.1
       # is allowed and marks the GitHub release as a pre-release.
-      - name: Derive version from tag
+      - name: Derive version
         id: version
-        env:
-          TAG: ${{ github.ref_name }}
         run: |
+          if [[ "$GITHUB_REF" == refs/tags/* ]]; then
+            TAG="$GITHUB_REF_NAME"
+          else
+            TAG="v$(sed -n 's/^version=//p' version.properties | tr -d '[:space:]')"
+            if git ls-remote --exit-code --tags origin "refs/tags/$TAG" >/dev/null; then
+              echo "Tag $TAG already exists, nothing to release."
+              echo "skip=true" >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
+          fi
           if [[ ! "$TAG" =~ ^v([0-9]+)\.([0-9]+)\.([0-9]+)(-[0-9A-Za-z.-]+)?$ ]]; then
-            echo "::error::Tag '$TAG' is not of the form v1.2.3 or v1.2.3-beta.1"
+            echo "::error::Version '$TAG' is not of the form v1.2.3 or v1.2.3-beta.1"
             exit 1
           fi
           major=$((10#${BASH_REMATCH[1]})) minor=$((10#${BASH_REMATCH[2]})) patch=$((10#${BASH_REMATCH[3]})) suffix=${BASH_REMATCH[4]}
@@ -37,10 +56,23 @@ jobs:
           fi
           name="${TAG#v}"
           code=$(( major * 10000 + minor * 100 + patch ))
-          echo "name=$name" >> "$GITHUB_OUTPUT"
-          echo "code=$code" >> "$GITHUB_OUTPUT"
-          echo "prerelease=$([[ -n "$suffix" ]] && echo true || echo false)" >> "$GITHUB_OUTPUT"
-          echo "Building versionName=$name versionCode=$code"
+          {
+            echo "skip=false"
+            echo "tag=$TAG"
+            echo "name=$name"
+            echo "code=$code"
+            echo "prerelease=$([[ -n "$suffix" ]] && echo true || echo false)"
+          } >> "$GITHUB_OUTPUT"
+          echo "Releasing $TAG (versionName=$name versionCode=$code)"
+
+  release:
+    name: Signed release APK
+    needs: version
+    if: needs.version.outputs.skip != 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
 
       - name: Check signing secrets
         env:
@@ -80,8 +112,8 @@ jobs:
         run: |
           echo "$KEYSTORE_BASE64" | base64 --decode > "$SIGNING_STORE_FILE"
           ./gradlew --no-daemon assembleRelease \
-            -PappVersionName="${{ steps.version.outputs.name }}" \
-            -PappVersionCode="${{ steps.version.outputs.code }}"
+            -PappVersionName="${{ needs.version.outputs.name }}" \
+            -PappVersionCode="${{ needs.version.outputs.code }}"
           rm -f "$SIGNING_STORE_FILE"
 
       - name: Verify signature and package
@@ -89,13 +121,13 @@ jobs:
         run: |
           apksigner="$(ls -d "$ANDROID_HOME"/build-tools/* | sort -V | tail -1)/apksigner"
           src=app/build/outputs/apk/release/app-release.apk
-          out="fastshopper-${{ steps.version.outputs.name }}.apk"
+          out="fastshopper-${{ needs.version.outputs.name }}.apk"
           "$apksigner" verify --print-certs "$src" | tee signing.txt
           cp "$src" "$out"
           sha256sum "$out" > "$out.sha256"
           echo "file=$out" >> "$GITHUB_OUTPUT"
           {
-            echo "### FastShopper ${{ steps.version.outputs.name }}"
+            echo "### FastShopper ${{ needs.version.outputs.name }}"
             echo '```'
             cat "$out.sha256"
             grep 'SHA-256' signing.txt || true
@@ -105,8 +137,10 @@ jobs:
       - name: Publish GitHub release
         uses: softprops/action-gh-release@v2
         with:
-          name: FastShopper ${{ steps.version.outputs.name }}
-          prerelease: ${{ steps.version.outputs.prerelease }}
+          tag_name: ${{ needs.version.outputs.tag }}
+          target_commitish: ${{ github.sha }}
+          name: FastShopper ${{ needs.version.outputs.name }}
+          prerelease: ${{ needs.version.outputs.prerelease }}
           generate_release_notes: true
           fail_on_unmatched_files: true
           files: |

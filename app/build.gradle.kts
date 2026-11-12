@@ -11,9 +11,14 @@ plugins {
 val signingStoreFile = providers.environmentVariable("SIGNING_STORE_FILE").orNull
 val hasReleaseSigning = !signingStoreFile.isNullOrBlank()
 
-// CI passes the version derived from the git tag (v1.2.3 -> versionName 1.2.3, versionCode 10203).
-val appVersionName = providers.gradleProperty("appVersionName").orNull ?: "0.1.0"
-val appVersionCode = providers.gradleProperty("appVersionCode").orNull?.toInt() ?: 1
+// The version lives in version.properties (1.2.3 -> versionName 1.2.3, versionCode 10203).
+// A release from a pushed tag overrides it with -PappVersionName / -PappVersionCode.
+val appVersionName = providers.gradleProperty("appVersionName").orNull
+    ?: providers.fileContents(rootProject.layout.projectDirectory.file("version.properties")).asText.get()
+        .lineSequence().map { it.trim() }.first { it.startsWith("version=") }.removePrefix("version=").trim()
+val appVersionCode = providers.gradleProperty("appVersionCode").orNull?.toInt()
+    ?: Regex("""^(\d+)\.(\d+)\.(\d+)""").find(appVersionName)!!.destructured
+        .let { (major, minor, patch) -> major.toInt() * 10000 + minor.toInt() * 100 + patch.toInt() }
 
 android {
     namespace = "io.github.eltonmaster.fastshopper"
