@@ -52,6 +52,27 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import io.github.eltonmaster.fastshopper.ui.appViewModelFactory
 
+/** Opens the sheet to edit an existing item. [session] makes every opening start fresh. */
+@Composable
+fun EditItemSheet(
+    listId: String,
+    itemId: String,
+    session: Int,
+    onDismiss: () -> Unit,
+    onMessage: (String) -> Unit,
+) {
+    AddItemSheet(
+        listId = listId,
+        listName = "",
+        onDismiss = onDismiss,
+        onMessage = onMessage,
+        viewModel = viewModel(
+            key = "edit-$itemId-$session",
+            factory = appViewModelFactory { AddItemViewModel(listId, it.repository, editItemId = itemId) },
+        ),
+    )
+}
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun AddItemSheet(
@@ -69,11 +90,23 @@ fun AddItemSheet(
     val nameFocus = remember { FocusRequester() }
     var labelMenuOpen by remember { mutableStateOf(false) }
 
-    LaunchedEffect(Unit) { nameFocus.requestFocus() }
+    // Adding starts typing right away; editing usually changes something other than the name.
+    LaunchedEffect(Unit) { if (!viewModel.isEdit) nameFocus.requestFocus() }
+
+    if (state.missing) {
+        LaunchedEffect(Unit) {
+            onMessage("This item was deleted meanwhile.")
+            onDismiss()
+        }
+    }
 
     val submit = {
-        viewModel.add(onMessage)
-        nameFocus.requestFocus()
+        if (viewModel.isEdit) {
+            viewModel.save(onMessage, onDismiss)
+        } else {
+            viewModel.add(onMessage)
+            nameFocus.requestFocus()
+        }
     }
 
     ModalBottomSheet(onDismissRequest = onDismiss, sheetState = sheetState) {
@@ -82,7 +115,11 @@ fun AddItemSheet(
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
             Text(
-                if (listName.isBlank()) "Add item" else "Add to $listName",
+                when {
+                    viewModel.isEdit -> "Edit item"
+                    listName.isBlank() -> "Add item"
+                    else -> "Add to $listName"
+                },
                 style = MaterialTheme.typography.titleLarge,
             )
 
@@ -161,6 +198,21 @@ fun AddItemSheet(
                 }
             }
 
+            if (viewModel.isEdit) {
+                OutlinedTextField(
+                    value = state.note,
+                    onValueChange = viewModel::onNoteChange,
+                    label = { Text("Note") },
+                    singleLine = true,
+                    keyboardOptions = KeyboardOptions(
+                        capitalization = KeyboardCapitalization.Sentences,
+                        imeAction = ImeAction.Done,
+                    ),
+                    keyboardActions = KeyboardActions(onDone = { submit() }),
+                    modifier = Modifier.fillMaxWidth(),
+                )
+            }
+
             // Label
             Box {
                 AssistChip(
@@ -192,7 +244,7 @@ fun AddItemSheet(
                 enabled = state.canAdd,
                 modifier = Modifier.fillMaxWidth().height(52.dp),
             ) {
-                Text("Add")
+                Text(if (viewModel.isEdit) "Save" else "Add")
             }
         }
     }
