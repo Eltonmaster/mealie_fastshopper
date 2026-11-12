@@ -2,6 +2,7 @@ package io.github.eltonmaster.fastshopper.data
 
 import io.github.eltonmaster.fastshopper.data.api.FoodCreate
 import io.github.eltonmaster.fastshopper.data.api.ItemWrite
+import io.github.eltonmaster.fastshopper.data.api.LabelCreate
 import io.github.eltonmaster.fastshopper.data.api.UnitCreate
 import io.github.eltonmaster.fastshopper.data.api.MealieApi
 import io.github.eltonmaster.fastshopper.data.api.MealieClient
@@ -141,6 +142,16 @@ class MealieRepository(
         val labels = api.getLabels().items.map { LabelEntity(it.id, it.name, it.color) }
         dao.replaceCatalog(foods, units, labels)
         catalogLoadedAt = System.currentTimeMillis()
+    }
+
+    /**
+     * Creates a label in Mealie and caches it. Needs the server: Mealie hands out the label's id,
+     * so unlike items it can't be queued offline.
+     */
+    suspend fun createLabel(name: String): Result<LabelEntity> = runCatching {
+        val trimmed = name.trim()
+        val created = api().createLabel(LabelCreate(name = trimmed))
+        LabelEntity(created.id, created.name.ifBlank { trimmed }, created.color).also { dao.upsertLabel(it) }
     }
 
     private suspend fun recordHistory(foodId: String, unitId: String?, at: Long) {

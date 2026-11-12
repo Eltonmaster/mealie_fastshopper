@@ -9,6 +9,7 @@ import io.github.eltonmaster.fastshopper.data.ItemEdit
 import io.github.eltonmaster.fastshopper.data.ItemFormat
 import io.github.eltonmaster.fastshopper.data.MealieRepository
 import io.github.eltonmaster.fastshopper.data.db.LabelEntity
+import io.github.eltonmaster.fastshopper.data.toUserMessage
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -16,6 +17,7 @@ import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import retrofit2.HttpException
 
 data class FoodSuggestion(val id: String, val name: String, val usualUnit: String?)
 data class UnitSuggestion(val id: String, val name: String)
@@ -41,6 +43,9 @@ private data class Status(
     val loaded: Boolean = true,
     /** The item to edit doesn't exist anymore. */
     val missing: Boolean = false,
+    val creatingLabel: Boolean = false,
+    /** Why the last label couldn't be created, shown in the label picker. */
+    val labelError: String? = null,
 )
 
 data class AddItemUiState(
@@ -59,6 +64,8 @@ data class AddItemUiState(
     val note: String = "",
     val loaded: Boolean = true,
     val missing: Boolean = false,
+    val creatingLabel: Boolean = false,
+    val labelError: String? = null,
     /** Ids resolved for the add call. */
     internal val effectiveFoodId: String? = null,
     internal val placeholderUnitId: String? = null,
@@ -137,6 +144,8 @@ class AddItemViewModel(
             note = f.note,
             loaded = st.loaded,
             missing = st.missing,
+            creatingLabel = st.creatingLabel,
+            labelError = st.labelError,
             effectiveFoodId = effectiveFoodId,
             placeholderUnitId = placeholderUnitId,
             exactUnitId = exactUnit?.id,
@@ -189,6 +198,31 @@ class AddItemViewModel(
     fun pickUnit(unit: UnitSuggestion) = form.update { it.copy(unitText = unit.name, unitId = unit.id) }
 
     fun pickLabel(labelId: String?) = form.update { it.copy(labelId = labelId, labelTouched = true) }
+
+    /** Creates a label in Mealie and selects it; [onCreated] runs once it's picked. */
+    fun createLabel(name: String, onCreated: () -> Unit) {
+        if (name.isBlank() || status.value.creatingLabel) return
+        status.update { it.copy(creatingLabel = true, labelError = null) }
+        viewModelScope.launch {
+            val result = repository.createLabel(name)
+            status.update {
+                it.copy(
+                    creatingLabel = false,
+                    labelError = result.exceptionOrNull()?.let { e -> labelErrorMessage(e) },
+                )
+            }
+            result.onSuccess {
+                pickLabel(it.id)
+                onCreated()
+            }
+        }
+    }
+
+    private fun labelErrorMessage(e: Throwable): String =
+        if (e is HttpException && e.code() == 403) "Your Mealie user isn't allowed to create labels."
+        else "Couldn't create the label. ${e.toUserMessage()}"
+
+    fun clearLabelError() = status.update { it.copy(labelError = null) }
 
     fun onNoteChange(text: String) = form.update { it.copy(note = text) }
 

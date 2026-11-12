@@ -48,6 +48,9 @@ interface MealieApi {
         @Query("perPage") perPage: Int = -1,
     ): Page<LabelRef>
 
+    @POST("api/groups/labels")
+    suspend fun createLabel(@Body label: LabelCreate): LabelRef
+
     @POST("api/households/shopping/items")
     suspend fun createItem(@Body item: ItemWrite): ResponseBody
 
