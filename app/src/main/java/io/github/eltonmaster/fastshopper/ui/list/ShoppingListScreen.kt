@@ -1,7 +1,9 @@
 package io.github.eltonmaster.fastshopper.ui.list
 
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -49,6 +51,7 @@ import androidx.compose.material3.rememberSwipeToDismissBoxState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -56,6 +59,8 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.style.TextOverflow
@@ -87,6 +92,12 @@ fun ShoppingListScreen(
     val scope = rememberCoroutineScope()
     var switcherOpen by remember { mutableStateOf(false) }
     var showAdd by rememberSaveable { mutableStateOf(false) }
+    var editItemId by rememberSaveable { mutableStateOf<String?>(null) }
+    var editSession by rememberSaveable { mutableIntStateOf(0) }
+    val onEdit: (RowItem) -> Unit = { item ->
+        editSession++
+        editItemId = item.id
+    }
 
     // Poll the server while the list is on screen.
     val lifecycleOwner = LocalLifecycleOwner.current
@@ -184,6 +195,15 @@ fun ShoppingListScreen(
                 onMessage = { msg -> scope.launch { snackbar.showSnackbar(msg) } },
             )
         }
+        editItemId?.let { id ->
+            EditItemSheet(
+                listId = listId,
+                itemId = id,
+                session = editSession,
+                onDismiss = { editItemId = null },
+                onMessage = { msg -> scope.launch { snackbar.showSnackbar(msg) } },
+            )
+        }
         Column(Modifier.fillMaxSize().padding(padding)) {
             SyncBanner(pendingCount = state.pendingCount, error = state.error)
             PullToRefreshBox(
@@ -211,7 +231,12 @@ fun ShoppingListScreen(
                         state.sections.forEach { section ->
                             item(key = "header-${section.key}") { SectionHeader(section.title) }
                             items(section.items, key = { it.id }) { item ->
-                                SwipeableRow(item, onToggle = { viewModel.toggle(item) }, onDelete = { onDelete(item) })
+                                SwipeableRow(
+                                    item,
+                                    onToggle = { viewModel.toggle(item) },
+                                    onEdit = { onEdit(item) },
+                                    onDelete = { onDelete(item) },
+                                )
                             }
                         }
                         checkedSection(
@@ -219,6 +244,7 @@ fun ShoppingListScreen(
                             expanded = state.checkedExpanded,
                             onToggleExpanded = viewModel::toggleCheckedExpanded,
                             onToggle = viewModel::toggle,
+                            onEdit = onEdit,
                             onDelete = onDelete,
                             onUncheckAll = viewModel::uncheckAll,
                             onDeleteAll = viewModel::deleteAllChecked,
@@ -263,7 +289,7 @@ private fun SectionHeader(title: String) {
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun SwipeableRow(item: RowItem, onToggle: () -> Unit, onDelete: () -> Unit) {
+private fun SwipeableRow(item: RowItem, onToggle: () -> Unit, onEdit: () -> Unit, onDelete: () -> Unit) {
     val dismissState = rememberSwipeToDismissBoxState(
         confirmValueChange = { value ->
             if (value == SwipeToDismissBoxValue.EndToStart) {
@@ -293,19 +319,29 @@ private fun SwipeableRow(item: RowItem, onToggle: () -> Unit, onDelete: () -> Un
             }
         },
     ) {
-        ItemRow(item, onToggle)
+        ItemRow(item, onToggle, onEdit)
     }
 }
 
+/** Tap checks the item off, long press opens it for editing. */
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
-private fun ItemRow(item: RowItem, onToggle: () -> Unit) {
+private fun ItemRow(item: RowItem, onToggle: () -> Unit, onEdit: () -> Unit) {
+    val haptics = LocalHapticFeedback.current
     Surface(color = MaterialTheme.colorScheme.surface) {
         Row(
             verticalAlignment = Alignment.CenterVertically,
             modifier = Modifier
                 .fillMaxWidth()
                 .heightIn(min = 56.dp)
-                .clickable(onClick = onToggle)
+                .combinedClickable(
+                    onClick = onToggle,
+                    onLongClick = {
+                        haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+                        onEdit()
+                    },
+                    onLongClickLabel = "Edit",
+                )
                 .padding(start = 4.dp, end = 16.dp),
         ) {
             Checkbox(checked = item.checked, onCheckedChange = { onToggle() })
@@ -338,6 +374,7 @@ private fun LazyListScope.checkedSection(
     expanded: Boolean,
     onToggleExpanded: () -> Unit,
     onToggle: (RowItem) -> Unit,
+    onEdit: (RowItem) -> Unit,
     onDelete: (RowItem) -> Unit,
     onUncheckAll: () -> Unit,
     onDeleteAll: () -> Unit,
@@ -381,7 +418,12 @@ private fun LazyListScope.checkedSection(
     }
     if (expanded) {
         items(items, key = { it.id }) { item ->
-            SwipeableRow(item, onToggle = { onToggle(item) }, onDelete = { onDelete(item) })
+            SwipeableRow(
+                item,
+                onToggle = { onToggle(item) },
+                onEdit = { onEdit(item) },
+                onDelete = { onDelete(item) },
+            )
         }
     }
 }

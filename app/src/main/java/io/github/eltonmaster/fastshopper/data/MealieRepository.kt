@@ -41,6 +41,18 @@ data class AddRequest(
     val labelId: String?,
 )
 
+data class EditRequest(
+    val itemId: String,
+    /** An existing Mealie food, or null together with [newFoodName] (or neither for a plain note item). */
+    val foodId: String?,
+    val newFoodName: String?,
+    val quantity: Double,
+    val unitId: String?,
+    val newUnitName: String?,
+    val labelId: String?,
+    val note: String,
+)
+
 data class AddResult(
     /** Set when a new food or unit couldn't be created on the server and went into the note instead. */
     val fellBackToNote: Boolean,
@@ -143,39 +155,52 @@ class MealieRepository(
         )
     }
 
-    /**
-     * Adds an item locally right away and queues it for the server. New foods and units are
-     * created in Mealie first; if that fails (offline, no permission) the text goes into the note.
-     */
-    suspend fun addItem(request: AddRequest): AddResult {
-        var food = request.foodId?.let { dao.food(it) }
-        var unit = request.unitId?.let { dao.unit(it) }
-        val noteParts = mutableListOf<String>()
-        var fellBack = false
+    /** The food and unit an add or edit ends up with, after creating new ones in Mealie. */
+    private data class Resolved(
+        val food: FoodEntity?,
+        val unit: UnitEntity?,
+        /** Names that couldn't be created on the server and go into the note instead. */
+        val noteParts: List<String>,
+    )
 
-        request.newFoodName?.trim()?.takeIf { it.isNotEmpty() }?.let { name ->
-            runCatching { api().createFood(FoodCreate(name = name, labelId = request.labelId)) }
+    private suspend fun resolve(
+        foodId: String?,
+        newFoodName: String?,
+        unitId: String?,
+        newUnitName: String?,
+        labelId: String?,
+    ): Resolved {
+        var food = foodId?.let { dao.food(it) }
+        var unit = unitId?.let { dao.unit(it) }
+        val noteParts = mutableListOf<String>()
+
+        newFoodName?.trim()?.takeIf { it.isNotEmpty() }?.let { name ->
+            runCatching { api().createFood(FoodCreate(name = name, labelId = labelId)) }
                 .onSuccess { created ->
                     food = FoodEntity(created.id, created.name.ifBlank { name }, created.pluralName, created.labelId)
                     dao.upsertFood(food!!)
                 }
-                .onFailure {
-                    noteParts += name
-                    fellBack = true
-                }
+                .onFailure { noteParts += name }
         }
-        request.newUnitName?.trim()?.takeIf { it.isNotEmpty() }?.let { name ->
+        newUnitName?.trim()?.takeIf { it.isNotEmpty() }?.let { name ->
             runCatching { api().createUnit(UnitCreate(name = name)) }
                 .onSuccess { created ->
                     unit = UnitEntity(created.id, created.name.ifBlank { name }, created.abbreviation, created.useAbbreviation)
                     dao.upsertUnit(unit!!)
                 }
-                .onFailure {
-                    noteParts += name
-                    fellBack = true
-                }
+                .onFailure { noteParts += name }
         }
+        return Resolved(food, unit, noteParts)
+    }
 
+    /**
+     * Adds an item locally right away and queues it for the server. New foods and units are
+     * created in Mealie first; if that fails (offline, no permission) the text goes into the note.
+     */
+    suspend fun addItem(request: AddRequest): AddResult {
+        val (food, unit, noteParts) = resolve(
+            request.foodId, request.newFoodName, request.unitId, request.newUnitName, request.labelId,
+        )
         val label = request.labelId?.let { dao.label(it) }
         val item = ItemEntity(
             id = UUID.randomUUID().toString(),
@@ -199,7 +224,52 @@ class MealieRepository(
         dao.upsertOp(PendingOp(item.id, OpType.CREATE, System.currentTimeMillis()))
         scheduleSync()
         food?.let { recordHistory(it.id, unit?.id, System.currentTimeMillis()) }
-        return AddResult(fellBackToNote = fellBack)
+        return AddResult(fellBackToNote = noteParts.isNotEmpty())
+    }
+
+    /** The current local copy of an item, or null if it's gone or waiting to be deleted. */
+    suspend fun item(itemId: String): ItemEntity? = dao.item(itemId)?.takeUnless { it.pendingDelete }
+
+    /**
+     * Changes an item locally right away and queues the update. New foods and units are created
+     * like in [addItem]. Returns null when the item no longer exists (e.g. deleted meanwhile).
+     */
+    suspend fun editItem(request: EditRequest): AddResult? {
+        val original = item(request.itemId) ?: return null
+        val (food, unit, noteParts) = resolve(
+            request.foodId, request.newFoodName, request.unitId, request.newUnitName, request.labelId,
+        )
+        val label = request.labelId?.let { dao.label(it) }
+        // Re-read: a sync may have refreshed the item while new foods/units were being created.
+        val current = item(request.itemId) ?: return null
+        // A food, unit or label the item already had but the local catalog doesn't know (yet)
+        // is kept as it is rather than dropped.
+        val keepFood = food == null && request.foodId != null && request.foodId == current.foodId
+        val keepUnit = unit == null && request.unitId != null && request.unitId == current.unitId
+        val keepLabel = label == null && request.labelId != null && request.labelId == current.labelId
+        val updated = current.copy(
+            quantity = request.quantity,
+            note = (noteParts + request.note.trim()).filter { it.isNotEmpty() }.joinToString(" "),
+            display = "",
+            foodId = if (keepFood) current.foodId else food?.id,
+            foodName = if (keepFood) current.foodName else food?.name,
+            unitId = if (keepUnit) current.unitId else unit?.id,
+            unitName = if (keepUnit) current.unitName else unit?.name,
+            unitAbbreviation = if (keepUnit) current.unitAbbreviation else unit?.abbreviation,
+            unitUseAbbreviation = if (keepUnit) current.unitUseAbbreviation else unit?.useAbbreviation ?: false,
+            labelId = if (keepLabel) current.labelId else label?.id,
+            labelName = if (keepLabel) current.labelName else label?.name,
+        )
+        dao.upsertItem(updated)
+        queue(updated.id, OpType.UPDATE)
+        val now = System.currentTimeMillis()
+        when {
+            food == null -> Unit
+            food.id != original.foodId -> recordHistory(food.id, unit?.id, now)
+            unit?.id != original.unitId -> dao.history(food.id)?.let { dao.upsertHistory(it.copy(lastUnitId = unit?.id)) }
+                ?: recordHistory(food.id, unit?.id, now)
+        }
+        return AddResult(fellBackToNote = noteParts.isNotEmpty())
     }
 
     // ---- Local changes (instant, synced later) -----------------------------------------------
