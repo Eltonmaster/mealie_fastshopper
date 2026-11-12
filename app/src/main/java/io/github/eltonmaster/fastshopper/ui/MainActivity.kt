@@ -28,6 +28,7 @@ import io.github.eltonmaster.fastshopper.ui.list.ShoppingListScreen
 import io.github.eltonmaster.fastshopper.ui.lists.ListPickerScreen
 import io.github.eltonmaster.fastshopper.ui.setup.SetupScreen
 import io.github.eltonmaster.fastshopper.ui.theme.FastShopperTheme
+import io.github.eltonmaster.fastshopper.ui.update.UpdatePrompt
 import kotlinx.coroutines.flow.first
 
 object Routes {
@@ -46,6 +47,7 @@ class MainActivity : ComponentActivity() {
             FastShopperTheme {
                 Surface(modifier = Modifier.fillMaxSize()) {
                     AppRoot(settingsStore)
+                    UpdatePrompt()
                 }
             }
         }
