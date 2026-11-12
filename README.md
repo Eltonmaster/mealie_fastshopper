@@ -8,6 +8,10 @@ An Android companion app for [Mealie](https://mealie.io) that makes adding and t
 
 Download the latest `fastshopper-x.y.z.apk` from [Releases](../../releases/latest) and open it on your phone (allow installing from unknown sources). Each release also has a `.sha256` file if you want to check the download.
 
+### Updates
+
+Release builds check GitHub Releases each time the app opens. When a newer version is out, a dialog shows what's new; tap **Update** to download the APK (its SHA-256 is checked against the release) and the system installer opens. The first time, Android asks you to allow FastShopper to install apps. Pre-releases are not offered, and debug builds don't check because their signing key differs.
+
 Want the newest unreleased build? Every push to `main` and every pull request builds a debug APK: open the run under **Actions → CI** and download `fastshopper-debug-apk`. Debug and release builds are signed with different keys, so switching between them means uninstalling first.
 
 ## Connect
