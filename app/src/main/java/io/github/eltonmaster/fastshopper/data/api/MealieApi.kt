@@ -1,6 +1,11 @@
 package io.github.eltonmaster.fastshopper.data.api
 
+import okhttp3.ResponseBody
+import retrofit2.http.Body
+import retrofit2.http.DELETE
 import retrofit2.http.GET
+import retrofit2.http.POST
+import retrofit2.http.PUT
 import retrofit2.http.Path
 import retrofit2.http.Query
 
@@ -18,4 +23,13 @@ interface MealieApi {
 
     @GET("api/households/shopping/lists/{id}")
     suspend fun getShoppingList(@Path("id") id: String): ShoppingList
+
+    @POST("api/households/shopping/items")
+    suspend fun createItem(@Body item: ItemWrite): ResponseBody
+
+    @PUT("api/households/shopping/items")
+    suspend fun updateItems(@Body items: List<ItemWrite>): ResponseBody
+
+    @DELETE("api/households/shopping/items")
+    suspend fun deleteItems(@Query("ids") ids: List<String>): ResponseBody
 }

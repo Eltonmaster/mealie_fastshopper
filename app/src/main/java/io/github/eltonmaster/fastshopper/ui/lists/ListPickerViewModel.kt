@@ -60,7 +60,7 @@ class ListPickerViewModel(
 
     fun signOut(onDone: () -> Unit) {
         viewModelScope.launch {
-            settingsStore.clear()
+            repository.signOut()
             onDone()
         }
     }
