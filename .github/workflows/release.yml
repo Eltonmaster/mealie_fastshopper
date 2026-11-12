@@ -22,11 +22,11 @@ jobs:
     name: Determine version
     runs-on: ubuntu-latest
     outputs:
-      skip: ${{ needs.version.outputs.skip }}
-      tag: ${{ needs.version.outputs.tag }}
-      name: ${{ needs.version.outputs.name }}
-      code: ${{ needs.version.outputs.code }}
-      prerelease: ${{ needs.version.outputs.prerelease }}
+      skip: ${{ steps.version.outputs.skip }}
+      tag: ${{ steps.version.outputs.tag }}
+      name: ${{ steps.version.outputs.name }}
+      code: ${{ steps.version.outputs.code }}
+      prerelease: ${{ steps.version.outputs.prerelease }}
     steps:
       - uses: actions/checkout@v4
 
