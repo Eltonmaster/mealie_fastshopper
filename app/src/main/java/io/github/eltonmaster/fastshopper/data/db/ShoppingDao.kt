@@ -141,6 +141,9 @@ abstract class ShoppingDao {
     @Upsert
     abstract suspend fun upsertUnit(unit: UnitEntity)
 
+    @Upsert
+    abstract suspend fun upsertLabel(label: LabelEntity)
+
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     protected abstract suspend fun insertFoods(foods: List<FoodEntity>)
 

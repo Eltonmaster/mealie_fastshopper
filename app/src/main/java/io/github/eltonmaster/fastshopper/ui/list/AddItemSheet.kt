@@ -3,7 +3,6 @@ package io.github.eltonmaster.fastshopper.ui.list
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -20,8 +19,6 @@ import androidx.compose.material.icons.filled.ArrowDropDown
 import androidx.compose.material.icons.filled.Remove
 import androidx.compose.material3.AssistChip
 import androidx.compose.material3.Button
-import androidx.compose.material3.DropdownMenu
-import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
@@ -42,7 +39,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.text.input.KeyboardType
@@ -214,29 +210,28 @@ fun AddItemSheet(
             }
 
             // Label
-            Box {
-                AssistChip(
-                    onClick = { labelMenuOpen = true },
-                    label = { Text("Label: " + (state.labelName ?: "none")) },
-                    trailingIcon = { Icon(Icons.Filled.ArrowDropDown, contentDescription = null) },
+            AssistChip(
+                onClick = { labelMenuOpen = true },
+                label = { Text("Label: " + (state.labelName ?: "none")) },
+                trailingIcon = { Icon(Icons.Filled.ArrowDropDown, contentDescription = null) },
+            )
+            if (labelMenuOpen) {
+                LabelPickerDialog(
+                    labels = state.labels,
+                    selectedId = state.labelId,
+                    creating = state.creatingLabel,
+                    error = state.labelError,
+                    onPick = { id ->
+                        labelMenuOpen = false
+                        viewModel.clearLabelError()
+                        viewModel.pickLabel(id)
+                    },
+                    onCreate = { name -> viewModel.createLabel(name) { labelMenuOpen = false } },
+                    onDismiss = {
+                        labelMenuOpen = false
+                        viewModel.clearLabelError()
+                    },
                 )
-                DropdownMenu(expanded = labelMenuOpen, onDismissRequest = { labelMenuOpen = false }) {
-                    DropdownMenuItem(
-                        text = { Text("No label") },
-                        onClick = { labelMenuOpen = false; viewModel.pickLabel(null) },
-                    )
-                    state.labels.forEach { label ->
-                        DropdownMenuItem(
-                            text = {
-                                Text(
-                                    label.name,
-                                    fontWeight = if (label.id == state.labelId) FontWeight.Bold else FontWeight.Normal,
-                                )
-                            },
-                            onClick = { labelMenuOpen = false; viewModel.pickLabel(label.id) },
-                        )
-                    }
-                }
             }
 
             Button(

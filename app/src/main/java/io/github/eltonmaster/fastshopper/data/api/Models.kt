@@ -102,6 +102,13 @@ data class FoodCreate(
 )
 
 @Serializable
+data class LabelCreate(
+    val name: String,
+    /** Mealie's own default label color. */
+    val color: String = "#959595",
+)
+
+@Serializable
 data class UnitCreate(
     val name: String,
 )
