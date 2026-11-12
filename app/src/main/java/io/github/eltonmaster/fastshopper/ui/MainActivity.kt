@@ -114,7 +114,16 @@ private fun AppNavHost(launch: Launch) {
         ) { entry ->
             ShoppingListScreen(
                 listId = entry.arguments?.getString("listId").orEmpty(),
-                onBack = { navController.popBackStack() },
+                onAllLists = {
+                    if (!navController.popBackStack(Routes.LISTS, inclusive = false)) {
+                        navController.navigate(Routes.LISTS)
+                    }
+                },
+                onSwitchList = { id ->
+                    navController.navigate(Routes.list(id)) {
+                        popUpTo(Routes.LISTS)
+                    }
+                },
             )
         }
     }

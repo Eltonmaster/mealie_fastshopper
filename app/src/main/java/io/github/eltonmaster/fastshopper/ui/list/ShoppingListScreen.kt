@@ -1,93 +1,162 @@
 package io.github.eltonmaster.fastshopper.ui.list
 
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.List
+import androidx.compose.material.icons.filled.ArrowDropDown
+import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.ExpandLess
+import androidx.compose.material.icons.filled.ExpandMore
 import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
-import androidx.compose.material3.ListItem
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.SnackbarDuration
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
+import androidx.compose.material3.SnackbarResult
+import androidx.compose.material3.Surface
+import androidx.compose.material3.SwipeToDismissBox
+import androidx.compose.material3.SwipeToDismissBoxValue
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
+import androidx.compose.material3.pulltorefresh.PullToRefreshBox
+import androidx.compose.material3.rememberSwipeToDismissBoxState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextDecoration
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import androidx.lifecycle.ViewModel
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import androidx.lifecycle.viewModelScope
+import androidx.lifecycle.repeatOnLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
-import io.github.eltonmaster.fastshopper.data.MealieRepository
-import io.github.eltonmaster.fastshopper.data.api.ShoppingList
-import io.github.eltonmaster.fastshopper.data.toUserMessage
 import io.github.eltonmaster.fastshopper.ui.appViewModelFactory
-import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
-data class ShoppingListUiState(
-    val loading: Boolean = true,
-    val list: ShoppingList? = null,
-    val error: String? = null,
-)
-
-/** Read-only preview of a list. The real list screen (grouping, checking, adding) comes next. */
-class ShoppingListViewModel(
-    private val listId: String,
-    private val repository: MealieRepository,
-) : ViewModel() {
-    private val _state = MutableStateFlow(ShoppingListUiState())
-    val state: StateFlow<ShoppingListUiState> = _state.asStateFlow()
-
-    init {
-        refresh()
-    }
-
-    fun refresh() {
-        _state.update { it.copy(loading = true, error = null) }
-        viewModelScope.launch {
-            repository.shoppingList(listId)
-                .onSuccess { list -> _state.update { it.copy(loading = false, list = list) } }
-                .onFailure { e -> _state.update { it.copy(loading = false, error = e.toUserMessage()) } }
-        }
-    }
-}
+private const val POLL_INTERVAL_MS = 5_000L
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ShoppingListScreen(
     listId: String,
-    onBack: () -> Unit,
+    onAllLists: () -> Unit,
+    onSwitchList: (String) -> Unit,
     viewModel: ShoppingListViewModel = viewModel(
         key = "list-$listId",
         factory = appViewModelFactory { ShoppingListViewModel(listId, it.repository) },
     ),
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
+    val snackbar = remember { SnackbarHostState() }
+    val scope = rememberCoroutineScope()
+    var switcherOpen by remember { mutableStateOf(false) }
+
+    // Poll the server while the list is on screen.
+    val lifecycleOwner = LocalLifecycleOwner.current
+    LaunchedEffect(lifecycleOwner, listId) {
+        lifecycleOwner.repeatOnLifecycle(Lifecycle.State.RESUMED) {
+            while (true) {
+                viewModel.sync()
+                delay(POLL_INTERVAL_MS)
+            }
+        }
+    }
+
+    val onDelete: (RowItem) -> Unit = { item ->
+        viewModel.delete(item.id) {
+            scope.launch {
+                snackbar.currentSnackbarData?.dismiss()
+                val result = snackbar.showSnackbar(
+                    message = "Deleted ${item.title}",
+                    actionLabel = "Undo",
+                    duration = SnackbarDuration.Short,
+                )
+                if (result == SnackbarResult.ActionPerformed) {
+                    viewModel.undoDelete(item.id) {
+                        scope.launch { snackbar.showSnackbar("Already deleted on the server") }
+                    }
+                }
+            }
+        }
+    }
 
     Scaffold(
+        snackbarHost = { SnackbarHost(snackbar) },
         topBar = {
             TopAppBar(
-                title = { Text(state.list?.name ?: "Shopping list") },
-                navigationIcon = {
-                    IconButton(onClick = onBack) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "All lists")
+                title = {
+                    Box {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier
+                                .clickable { switcherOpen = true }
+                                .padding(vertical = 8.dp),
+                        ) {
+                            Text(
+                                state.listName.ifBlank { "Shopping list" },
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                            )
+                            Icon(Icons.Filled.ArrowDropDown, contentDescription = "Switch list")
+                        }
+                        DropdownMenu(expanded = switcherOpen, onDismissRequest = { switcherOpen = false }) {
+                            state.lists.forEach { list ->
+                                DropdownMenuItem(
+                                    text = {
+                                        Text(
+                                            list.name,
+                                            fontWeight = if (list.id == listId) FontWeight.Bold else FontWeight.Normal,
+                                        )
+                                    },
+                                    onClick = {
+                                        switcherOpen = false
+                                        if (list.id != listId) onSwitchList(list.id)
+                                    },
+                                )
+                            }
+                            HorizontalDivider()
+                            DropdownMenuItem(
+                                text = { Text("All lists & settings") },
+                                leadingIcon = { Icon(Icons.AutoMirrored.Filled.List, contentDescription = null) },
+                                onClick = {
+                                    switcherOpen = false
+                                    onAllLists()
+                                },
+                            )
+                        }
                     }
                 },
                 actions = {
@@ -98,38 +167,198 @@ fun ShoppingListScreen(
             )
         },
     ) { padding ->
-        Box(Modifier.fillMaxSize().padding(padding)) {
-            val list = state.list
-            when {
-                state.loading && list == null -> CircularProgressIndicator(Modifier.align(Alignment.Center))
-                state.error != null && list == null -> Column(
-                    Modifier.align(Alignment.Center).padding(24.dp),
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                    verticalArrangement = Arrangement.spacedBy(12.dp),
-                ) {
-                    Text(state.error.orEmpty(), color = MaterialTheme.colorScheme.error)
-                    TextButton(onClick = viewModel::refresh) { Text("Try again") }
-                }
-                list != null -> LazyColumn(Modifier.fillMaxSize()) {
-                    val items = list.listItems.sortedWith(compareBy({ it.checked }, { it.position }))
-                    if (items.isEmpty()) {
-                        item { Text("This list is empty.", Modifier.padding(16.dp)) }
-                    }
-                    items(items, key = { it.id }) { item ->
-                        ListItem(
-                            headlineContent = {
+        Column(Modifier.fillMaxSize().padding(padding)) {
+            SyncBanner(pendingCount = state.pendingCount, error = state.error)
+            PullToRefreshBox(
+                isRefreshing = state.refreshing,
+                onRefresh = viewModel::refresh,
+                modifier = Modifier.fillMaxSize(),
+            ) {
+                when {
+                    !state.loadedOnce && state.isEmpty && state.error == null ->
+                        CircularProgressIndicator(Modifier.align(Alignment.Center))
+
+                    state.isEmpty ->
+                        LazyColumn(Modifier.fillMaxSize()) {
+                            item {
                                 Text(
-                                    item.display ?: item.note ?: "",
-                                    textDecoration = if (item.checked) TextDecoration.LineThrough else null,
-                                    color = if (item.checked) MaterialTheme.colorScheme.onSurfaceVariant
-                                    else MaterialTheme.colorScheme.onSurface,
+                                    if (state.loadedOnce) "Nothing on this list." else "No cached copy of this list yet.",
+                                    style = MaterialTheme.typography.bodyLarge,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    modifier = Modifier.padding(24.dp),
                                 )
-                            },
+                            }
+                        }
+
+                    else -> LazyColumn(Modifier.fillMaxSize()) {
+                        state.sections.forEach { section ->
+                            item(key = "header-${section.key}") { SectionHeader(section.title) }
+                            items(section.items, key = { it.id }) { item ->
+                                SwipeableRow(item, onToggle = { viewModel.toggle(item) }, onDelete = { onDelete(item) })
+                            }
+                        }
+                        checkedSection(
+                            items = state.checked,
+                            expanded = state.checkedExpanded,
+                            onToggleExpanded = viewModel::toggleCheckedExpanded,
+                            onToggle = viewModel::toggle,
+                            onDelete = onDelete,
+                            onUncheckAll = viewModel::uncheckAll,
+                            onDeleteAll = viewModel::deleteAllChecked,
                         )
-                        HorizontalDivider()
+                        item(key = "bottom-space") { Spacer(Modifier.heightIn(min = 88.dp)) }
                     }
                 }
             }
+        }
+    }
+}
+
+@Composable
+private fun SyncBanner(pendingCount: Int, error: String?) {
+    val text = when {
+        error != null && pendingCount > 0 -> "$error ${changes(pendingCount)} waiting to sync."
+        error != null -> error
+        pendingCount > 0 -> "Syncing ${changes(pendingCount)}…"
+        else -> return
+    }
+    Surface(color = MaterialTheme.colorScheme.surfaceVariant, modifier = Modifier.fillMaxWidth()) {
+        Text(
+            text,
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.padding(horizontal = 16.dp, vertical = 6.dp),
+        )
+    }
+}
+
+private fun changes(n: Int) = if (n == 1) "1 change" else "$n changes"
+
+@Composable
+private fun SectionHeader(title: String) {
+    Text(
+        title.uppercase(),
+        style = MaterialTheme.typography.labelMedium,
+        color = MaterialTheme.colorScheme.primary,
+        modifier = Modifier.padding(start = 16.dp, end = 16.dp, top = 16.dp, bottom = 4.dp),
+    )
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun SwipeableRow(item: RowItem, onToggle: () -> Unit, onDelete: () -> Unit) {
+    val dismissState = rememberSwipeToDismissBoxState(
+        confirmValueChange = { value ->
+            if (value == SwipeToDismissBoxValue.EndToStart) {
+                onDelete()
+                true
+            } else {
+                false
+            }
+        },
+    )
+    SwipeToDismissBox(
+        state = dismissState,
+        enableDismissFromStartToEnd = false,
+        backgroundContent = {
+            Box(
+                Modifier
+                    .fillMaxSize()
+                    .background(MaterialTheme.colorScheme.errorContainer)
+                    .padding(horizontal = 24.dp),
+                contentAlignment = Alignment.CenterEnd,
+            ) {
+                Icon(
+                    Icons.Filled.Delete,
+                    contentDescription = "Delete",
+                    tint = MaterialTheme.colorScheme.onErrorContainer,
+                )
+            }
+        },
+    ) {
+        ItemRow(item, onToggle)
+    }
+}
+
+@Composable
+private fun ItemRow(item: RowItem, onToggle: () -> Unit) {
+    Surface(color = MaterialTheme.colorScheme.surface) {
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            modifier = Modifier
+                .fillMaxWidth()
+                .heightIn(min = 56.dp)
+                .clickable(onClick = onToggle)
+                .padding(start = 4.dp, end = 16.dp),
+        ) {
+            Checkbox(checked = item.checked, onCheckedChange = { onToggle() })
+            Column(Modifier.weight(1f), verticalArrangement = Arrangement.Center) {
+                Text(
+                    item.title,
+                    style = MaterialTheme.typography.bodyLarge,
+                    textDecoration = if (item.checked) TextDecoration.LineThrough else null,
+                    color = if (item.checked) MaterialTheme.colorScheme.onSurfaceVariant
+                    else MaterialTheme.colorScheme.onSurface,
+                )
+                item.subtitle?.let {
+                    Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+            }
+            if (item.amount.isNotEmpty()) {
+                Spacer(Modifier.width(12.dp))
+                Text(
+                    item.amount,
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+        }
+    }
+}
+
+private fun LazyListScope.checkedSection(
+    items: List<RowItem>,
+    expanded: Boolean,
+    onToggleExpanded: () -> Unit,
+    onToggle: (RowItem) -> Unit,
+    onDelete: (RowItem) -> Unit,
+    onUncheckAll: () -> Unit,
+    onDeleteAll: () -> Unit,
+) {
+    if (items.isEmpty()) return
+    item(key = "checked-header") {
+        Column {
+            HorizontalDivider(Modifier.padding(top = 12.dp))
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .heightIn(min = 48.dp)
+                    .clickable(onClick = onToggleExpanded)
+                    .padding(horizontal = 16.dp),
+            ) {
+                Text(
+                    "Checked (${items.size})",
+                    style = MaterialTheme.typography.titleSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.weight(1f),
+                )
+                Icon(
+                    if (expanded) Icons.Filled.ExpandLess else Icons.Filled.ExpandMore,
+                    contentDescription = if (expanded) "Hide checked items" else "Show checked items",
+                )
+            }
+            if (expanded) {
+                Row(Modifier.padding(horizontal = 8.dp)) {
+                    TextButton(onClick = onUncheckAll) { Text("Uncheck all") }
+                    TextButton(onClick = onDeleteAll) { Text("Delete all checked") }
+                }
+            }
+        }
+    }
+    if (expanded) {
+        items(items, key = { it.id }) { item ->
+            SwipeableRow(item, onToggle = { onToggle(item) }, onDelete = { onDelete(item) })
         }
     }
 }

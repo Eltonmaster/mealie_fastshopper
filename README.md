@@ -2,7 +2,7 @@
 
 An Android companion app for [Mealie](https://mealie.io) that makes adding and ticking off shopping list entries fast, even with bad signal in the shop.
 
-**Status:** early development (milestone 1: connect to a server, pick a list, set a default list).
+**Status:** early development. Working: connect to a server, pick lists, default list, list grouped by label, tap to check, swipe to delete with undo, offline queue with background sync. Next: adding items.
 
 ## Install
 
