@@ -17,6 +17,7 @@ import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.List
+import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.ArrowDropDown
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.ExpandLess
@@ -27,6 +28,7 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -50,6 +52,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -83,6 +86,7 @@ fun ShoppingListScreen(
     val snackbar = remember { SnackbarHostState() }
     val scope = rememberCoroutineScope()
     var switcherOpen by remember { mutableStateOf(false) }
+    var showAdd by rememberSaveable { mutableStateOf(false) }
 
     // Poll the server while the list is on screen.
     val lifecycleOwner = LocalLifecycleOwner.current
@@ -115,6 +119,11 @@ fun ShoppingListScreen(
 
     Scaffold(
         snackbarHost = { SnackbarHost(snackbar) },
+        floatingActionButton = {
+            FloatingActionButton(onClick = { showAdd = true }) {
+                Icon(Icons.Filled.Add, contentDescription = "Add item")
+            }
+        },
         topBar = {
             TopAppBar(
                 title = {
@@ -167,6 +176,14 @@ fun ShoppingListScreen(
             )
         },
     ) { padding ->
+        if (showAdd) {
+            AddItemSheet(
+                listId = listId,
+                listName = state.listName,
+                onDismiss = { showAdd = false },
+                onMessage = { msg -> scope.launch { snackbar.showSnackbar(msg) } },
+            )
+        }
         Column(Modifier.fillMaxSize().padding(padding)) {
             SyncBanner(pendingCount = state.pendingCount, error = state.error)
             PullToRefreshBox(

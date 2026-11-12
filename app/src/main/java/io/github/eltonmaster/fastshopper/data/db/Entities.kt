@@ -54,3 +54,35 @@ data class PendingOp(
     val createdAt: Long,
     val attempts: Int = 0,
 )
+
+@Entity(tableName = "foods")
+data class FoodEntity(
+    @PrimaryKey val id: String,
+    val name: String,
+    val pluralName: String?,
+    val labelId: String?,
+)
+
+@Entity(tableName = "units")
+data class UnitEntity(
+    @PrimaryKey val id: String,
+    val name: String,
+    val abbreviation: String?,
+    val useAbbreviation: Boolean,
+)
+
+@Entity(tableName = "labels")
+data class LabelEntity(
+    @PrimaryKey val id: String,
+    val name: String,
+    val color: String?,
+)
+
+/** Remembers which container (unit) each food was last bought in, and how often it's added. */
+@Entity(tableName = "container_history")
+data class ContainerHistory(
+    @PrimaryKey val foodId: String,
+    val lastUnitId: String?,
+    val timesAdded: Int,
+    val lastAddedAt: Long,
+)

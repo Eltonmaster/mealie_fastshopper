@@ -1,13 +1,19 @@
 package io.github.eltonmaster.fastshopper.data
 
+import io.github.eltonmaster.fastshopper.data.api.FoodCreate
 import io.github.eltonmaster.fastshopper.data.api.ItemWrite
+import io.github.eltonmaster.fastshopper.data.api.UnitCreate
 import io.github.eltonmaster.fastshopper.data.api.MealieApi
 import io.github.eltonmaster.fastshopper.data.api.MealieClient
 import io.github.eltonmaster.fastshopper.data.api.ShoppingList
 import io.github.eltonmaster.fastshopper.data.api.ShoppingListItem
 import io.github.eltonmaster.fastshopper.data.api.ShoppingListSummary
 import io.github.eltonmaster.fastshopper.data.api.UserSelf
+import io.github.eltonmaster.fastshopper.data.db.ContainerHistory
+import io.github.eltonmaster.fastshopper.data.db.FoodEntity
 import io.github.eltonmaster.fastshopper.data.db.ItemEntity
+import io.github.eltonmaster.fastshopper.data.db.LabelEntity
+import io.github.eltonmaster.fastshopper.data.db.UnitEntity
 import io.github.eltonmaster.fastshopper.data.db.LabelOrderEntity
 import io.github.eltonmaster.fastshopper.data.db.ListEntity
 import io.github.eltonmaster.fastshopper.data.db.OpType
@@ -21,7 +27,24 @@ import kotlinx.serialization.SerializationException
 import retrofit2.HttpException
 import java.io.IOException
 import java.net.UnknownHostException
+import java.util.UUID
 import javax.net.ssl.SSLException
+
+data class AddRequest(
+    val listId: String,
+    /** An existing Mealie food, or null together with [newFoodName]. */
+    val foodId: String?,
+    val newFoodName: String?,
+    val quantity: Double,
+    val unitId: String?,
+    val newUnitName: String?,
+    val labelId: String?,
+)
+
+data class AddResult(
+    /** Set when a new food or unit couldn't be created on the server and went into the note instead. */
+    val fellBackToNote: Boolean,
+)
 
 class NotConfiguredException : IllegalStateException("App is not connected to a Mealie server")
 
@@ -76,8 +99,106 @@ class MealieRepository(
         syncLock.withLock {
             flushLocked()
             val list = api().getShoppingList(listId)
-            dao.replaceListFromServer(listId, list.toItemEntities(), list.toLabelOrder())
+            val known = dao.itemIds(listId).toSet()
+            val items = list.toItemEntities()
+            dao.replaceListFromServer(listId, items, list.toLabelOrder())
+            // Learn the usual container from items we haven't seen before, whoever added them.
+            val now = System.currentTimeMillis()
+            items.filter { it.id !in known && it.foodId != null }
+                .forEach { recordHistory(it.foodId!!, it.unitId, now) }
         }
+    }
+
+    // ---- Catalog for the add sheet ----------------------------------------------------------
+
+    fun observeFoods(): Flow<List<FoodEntity>> = dao.observeFoods()
+    fun observeUnits(): Flow<List<UnitEntity>> = dao.observeUnits()
+    fun observeLabels(): Flow<List<LabelEntity>> = dao.observeLabels()
+    fun observeHistory(): Flow<List<ContainerHistory>> = dao.observeHistory()
+
+    @Volatile private var catalogLoadedAt = 0L
+
+    /** Reloads foods, units and labels from Mealie, at most once a day unless forced. */
+    suspend fun refreshCatalog(force: Boolean = false): Result<Unit> = runCatching {
+        val fresh = System.currentTimeMillis() - catalogLoadedAt < CATALOG_MAX_AGE_MS
+        if (!force && fresh && dao.foodCount() > 0) return@runCatching
+        val api = api()
+        val foods = api.getFoods().items.map { FoodEntity(it.id, it.name, it.pluralName, it.labelId) }
+        val units = api.getUnits().items.map { UnitEntity(it.id, it.name, it.abbreviation, it.useAbbreviation) }
+        val labels = api.getLabels().items.map { LabelEntity(it.id, it.name, it.color) }
+        dao.replaceCatalog(foods, units, labels)
+        catalogLoadedAt = System.currentTimeMillis()
+    }
+
+    private suspend fun recordHistory(foodId: String, unitId: String?, at: Long) {
+        val existing = dao.history(foodId)
+        dao.upsertHistory(
+            ContainerHistory(
+                foodId = foodId,
+                lastUnitId = unitId ?: existing?.lastUnitId,
+                timesAdded = (existing?.timesAdded ?: 0) + 1,
+                lastAddedAt = maxOf(at, existing?.lastAddedAt ?: 0L),
+            )
+        )
+    }
+
+    /**
+     * Adds an item locally right away and queues it for the server. New foods and units are
+     * created in Mealie first; if that fails (offline, no permission) the text goes into the note.
+     */
+    suspend fun addItem(request: AddRequest): AddResult {
+        var food = request.foodId?.let { dao.food(it) }
+        var unit = request.unitId?.let { dao.unit(it) }
+        val noteParts = mutableListOf<String>()
+        var fellBack = false
+
+        request.newFoodName?.trim()?.takeIf { it.isNotEmpty() }?.let { name ->
+            runCatching { api().createFood(FoodCreate(name = name, labelId = request.labelId)) }
+                .onSuccess { created ->
+                    food = FoodEntity(created.id, created.name.ifBlank { name }, created.pluralName, created.labelId)
+                    dao.upsertFood(food!!)
+                }
+                .onFailure {
+                    noteParts += name
+                    fellBack = true
+                }
+        }
+        request.newUnitName?.trim()?.takeIf { it.isNotEmpty() }?.let { name ->
+            runCatching { api().createUnit(UnitCreate(name = name)) }
+                .onSuccess { created ->
+                    unit = UnitEntity(created.id, created.name.ifBlank { name }, created.abbreviation, created.useAbbreviation)
+                    dao.upsertUnit(unit!!)
+                }
+                .onFailure {
+                    noteParts += name
+                    fellBack = true
+                }
+        }
+
+        val label = request.labelId?.let { dao.label(it) }
+        val item = ItemEntity(
+            id = UUID.randomUUID().toString(),
+            listId = request.listId,
+            quantity = request.quantity,
+            note = noteParts.joinToString(" "),
+            display = "",
+            checked = false,
+            position = (dao.maxPosition(request.listId) ?: -1) + 1,
+            foodId = food?.id,
+            foodName = food?.name,
+            unitId = unit?.id,
+            unitName = unit?.name,
+            unitAbbreviation = unit?.abbreviation,
+            unitUseAbbreviation = unit?.useAbbreviation ?: false,
+            labelId = label?.id,
+            labelName = label?.name,
+            updatedAt = null,
+        )
+        dao.upsertItem(item)
+        dao.upsertOp(PendingOp(item.id, OpType.CREATE, System.currentTimeMillis()))
+        scheduleSync()
+        food?.let { recordHistory(it.id, unit?.id, System.currentTimeMillis()) }
+        return AddResult(fellBackToNote = fellBack)
     }
 
     // ---- Local changes (instant, synced later) -----------------------------------------------
@@ -168,6 +289,7 @@ class MealieRepository(
 
     private companion object {
         const val MAX_ATTEMPTS = 5
+        const val CATALOG_MAX_AGE_MS = 24 * 60 * 60 * 1000L
     }
 }
 

@@ -94,3 +94,14 @@ data class ItemWrite(
     val unitId: String?,
     val labelId: String?,
 )
+
+@Serializable
+data class FoodCreate(
+    val name: String,
+    val labelId: String? = null,
+)
+
+@Serializable
+data class UnitCreate(
+    val name: String,
+)
