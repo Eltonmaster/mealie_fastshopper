@@ -6,6 +6,15 @@ plugins {
     alias(libs.plugins.ksp)
 }
 
+// Release signing comes from environment variables so no secrets live in the repo.
+// CI writes the keystore from a repository secret; locally you can export the same variables.
+val signingStoreFile = providers.environmentVariable("SIGNING_STORE_FILE").orNull
+val hasReleaseSigning = !signingStoreFile.isNullOrBlank()
+
+// CI passes the version derived from the git tag (v1.2.3 -> versionName 1.2.3, versionCode 10203).
+val appVersionName = providers.gradleProperty("appVersionName").orNull ?: "0.1.0"
+val appVersionCode = providers.gradleProperty("appVersionCode").orNull?.toInt() ?: 1
+
 android {
     namespace = "io.github.eltonmaster.fastshopper"
     compileSdk = 35
@@ -14,12 +23,24 @@ android {
         applicationId = "io.github.eltonmaster.fastshopper"
         minSdk = 26
         targetSdk = 35
-        versionCode = 2
-        versionName = "0.2.0"
+        versionCode = appVersionCode
+        versionName = appVersionName
+    }
+
+    signingConfigs {
+        if (hasReleaseSigning) {
+            create("release") {
+                storeFile = file(signingStoreFile!!)
+                storePassword = providers.environmentVariable("SIGNING_STORE_PASSWORD").get()
+                keyAlias = providers.environmentVariable("SIGNING_KEY_ALIAS").get()
+                keyPassword = providers.environmentVariable("SIGNING_KEY_PASSWORD").get()
+            }
+        }
     }
 
     buildTypes {
         release {
+            if (hasReleaseSigning) signingConfig = signingConfigs.getByName("release")
             isMinifyEnabled = false
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
         }
@@ -30,6 +51,12 @@ android {
     }
     kotlinOptions {
         jvmTarget = "17"
+    }
+    lint {
+        abortOnError = true
+        checkReleaseBuilds = false
+        htmlReport = true
+        xmlReport = true
     }
     buildFeatures {
         compose = true
