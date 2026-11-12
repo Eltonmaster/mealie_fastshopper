@@ -185,4 +185,10 @@ abstract class ShoppingDao {
 
     @Query("SELECT * FROM labels WHERE id = :id")
     abstract suspend fun label(id: String): LabelEntity?
+
+    @Query("SELECT * FROM items WHERE listId = :listId")
+    abstract suspend fun itemsOfList(listId: String): List<ItemEntity>
+
+    @Query("SELECT DISTINCT listId FROM items")
+    abstract suspend fun cachedListIds(): List<String>
 }

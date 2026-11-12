@@ -4,6 +4,7 @@ import android.app.Application
 import io.github.eltonmaster.fastshopper.data.MealieRepository
 import io.github.eltonmaster.fastshopper.data.SettingsStore
 import io.github.eltonmaster.fastshopper.data.db.AppDatabase
+import io.github.eltonmaster.fastshopper.data.sync.AutoClearWorker
 import io.github.eltonmaster.fastshopper.data.sync.SyncWorker
 
 class FastShopperApp : Application() {
@@ -13,6 +14,7 @@ class FastShopperApp : Application() {
     override fun onCreate() {
         super.onCreate()
         container = AppContainer(this)
+        AutoClearWorker.schedule(this)
     }
 }
 

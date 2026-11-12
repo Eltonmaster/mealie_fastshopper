@@ -366,6 +366,12 @@ private fun LazyListScope.checkedSection(
                 )
             }
             if (expanded) {
+                Text(
+                    "Checked items are removed automatically after 12 hours.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(horizontal = 16.dp),
+                )
                 Row(Modifier.padding(horizontal = 8.dp)) {
                     TextButton(onClick = onUncheckAll) { Text("Uncheck all") }
                     TextButton(onClick = onDeleteAll) { Text("Delete all checked") }

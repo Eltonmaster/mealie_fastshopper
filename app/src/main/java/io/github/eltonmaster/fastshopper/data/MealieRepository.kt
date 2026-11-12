@@ -106,6 +106,7 @@ class MealieRepository(
             val now = System.currentTimeMillis()
             items.filter { it.id !in known && it.foodId != null }
                 .forEach { recordHistory(it.foodId!!, it.unitId, now) }
+            clearExpiredLocked(listId)
         }
     }
 
@@ -241,6 +242,31 @@ class MealieRepository(
         val newType = if (existing?.type == OpType.CREATE) OpType.CREATE else type
         dao.upsertOp(PendingOp(itemId, newType, System.currentTimeMillis()))
         scheduleSync()
+    }
+
+    // ---- Auto-clear --------------------------------------------------------------------------
+
+    /** Deletes items that were checked more than 12 hours ago, then sends the deletes. */
+    private suspend fun clearExpiredLocked(listId: String) {
+        val now = java.time.Instant.now()
+        val pending = dao.pendingItemIds().toSet()
+        val expired = dao.itemsOfList(listId).filter {
+            it.id !in pending && AutoClear.isExpired(it.checked, it.updatedAt, now)
+        }
+        if (expired.isEmpty()) return
+        val queuedAt = System.currentTimeMillis()
+        expired.forEach {
+            dao.upsertItem(it.copy(pendingDelete = true))
+            dao.upsertOp(PendingOp(it.id, OpType.DELETE, queuedAt))
+        }
+        flushLocked()
+    }
+
+    /** Syncs every cached list; used by the periodic background job so lists stay tidy. */
+    suspend fun syncAllCachedLists(): Boolean {
+        var ok = true
+        dao.cachedListIds().forEach { id -> if (sync(id).isFailure) ok = false }
+        return ok
     }
 
     // ---- Outbox ------------------------------------------------------------------------------
