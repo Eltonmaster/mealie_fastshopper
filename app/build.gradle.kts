@@ -1,6 +1,6 @@
 plugins {
+    // AGP 9 compiles Kotlin itself, so org.jetbrains.kotlin.android is not applied here.
     alias(libs.plugins.android.application)
-    alias(libs.plugins.kotlin.android)
     alias(libs.plugins.kotlin.compose)
     alias(libs.plugins.kotlin.serialization)
     alias(libs.plugins.ksp)
@@ -17,7 +17,7 @@ val appVersionCode = providers.gradleProperty("appVersionCode").orNull?.toInt() 
 
 android {
     namespace = "io.github.eltonmaster.fastshopper"
-    compileSdk = 35
+    compileSdk = 37
 
     defaultConfig {
         applicationId = "io.github.eltonmaster.fastshopper"
@@ -48,9 +48,6 @@ android {
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
-    }
-    kotlinOptions {
-        jvmTarget = "17"
     }
     lint {
         abortOnError = true
@@ -87,4 +84,10 @@ dependencies {
     implementation(libs.androidx.work.runtime.ktx)
     debugImplementation(libs.androidx.compose.ui.tooling)
     testImplementation(libs.junit)
+}
+
+kotlin {
+    compilerOptions {
+        jvmTarget = org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17
+    }
 }

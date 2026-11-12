@@ -4,14 +4,12 @@ updates:
     directory: /
     schedule:
       interval: weekly
-    open-pull-requests-limit: 5
+    # One PR for all Gradle updates: AGP, the Gradle wrapper, Kotlin, KSP and the
+    # AndroidX libraries depend on each other's versions, so updating them in
+    # separate PRs produces builds that can never pass on their own.
     groups:
-      androidx-and-compose:
-        patterns: ["androidx.*"]
-      kotlin:
-        patterns: ["org.jetbrains.kotlin*", "org.jetbrains.kotlinx*"]
-      network:
-        patterns: ["com.squareup.*"]
+      gradle-dependencies:
+        patterns: ["*"]
 
   - package-ecosystem: github-actions
     directory: /
