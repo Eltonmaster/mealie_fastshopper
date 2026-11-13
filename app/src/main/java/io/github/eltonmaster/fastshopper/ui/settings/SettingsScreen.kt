@@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.selection.selectableGroup
+import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
@@ -25,14 +26,21 @@ import androidx.compose.material3.ListItem
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.compose.LifecycleResumeEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import io.github.eltonmaster.fastshopper.BuildConfig
@@ -40,7 +48,10 @@ import io.github.eltonmaster.fastshopper.data.AutoClearDelay
 import io.github.eltonmaster.fastshopper.data.ThemeMode
 import io.github.eltonmaster.fastshopper.data.update.AvailableUpdate
 import io.github.eltonmaster.fastshopper.data.update.UpdateChecker
+import io.github.eltonmaster.fastshopper.notify.ChangeNotifier
 import io.github.eltonmaster.fastshopper.ui.appViewModelFactory
+import io.github.eltonmaster.fastshopper.ui.notify.openAppNotificationSettings
+import io.github.eltonmaster.fastshopper.ui.notify.rememberNotificationPermissionRequest
 import io.github.eltonmaster.fastshopper.ui.update.UpdateCheck
 import io.github.eltonmaster.fastshopper.ui.update.UpdateState
 import io.github.eltonmaster.fastshopper.ui.update.UpdateViewModel
@@ -57,6 +68,7 @@ fun SettingsScreen(
 ) {
     val themeMode by viewModel.themeMode.collectAsStateWithLifecycle()
     val autoClearDelay by viewModel.autoClearDelay.collectAsStateWithLifecycle()
+    val notifyChanges by viewModel.notifyChanges.collectAsStateWithLifecycle()
     val check by updateViewModel.check.collectAsStateWithLifecycle()
     val updateState by updateViewModel.state.collectAsStateWithLifecycle()
 
@@ -88,6 +100,11 @@ fun SettingsScreen(
 
             HorizontalDivider(Modifier.padding(top = 8.dp))
 
+            SectionHeader("Notifications")
+            ChangeNotificationSetting(enabled = notifyChanges, onChange = viewModel::setNotifyChanges)
+
+            HorizontalDivider(Modifier.padding(top = 8.dp))
+
             SectionHeader("About")
             AboutSection(
                 check = check,
@@ -107,6 +124,55 @@ private fun SectionHeader(title: String) {
         color = MaterialTheme.colorScheme.primary,
         modifier = Modifier.padding(start = 16.dp, end = 16.dp, top = 24.dp, bottom = 8.dp),
     )
+}
+
+/**
+ * Switch for background change notifications. Turning it on asks for the notification
+ * permission on Android 13+; if notifications are blocked for the app, says so with a way to fix it.
+ */
+@Composable
+private fun ChangeNotificationSetting(enabled: Boolean?, onChange: (Boolean) -> Unit) {
+    val context = LocalContext.current
+    var allowed by remember { mutableStateOf(ChangeNotifier.canPost(context)) }
+    var denied by remember { mutableStateOf(false) }
+    LifecycleResumeEffect(Unit) {
+        allowed = ChangeNotifier.canPost(context)
+        onPauseOrDispose {}
+    }
+    val requestPermission = rememberNotificationPermissionRequest { granted ->
+        allowed = ChangeNotifier.canPost(context)
+        denied = !granted
+        if (granted) onChange(true)
+    }
+    val on = enabled == true
+    ListItem(
+        headlineContent = { Text("Notify me about list changes") },
+        supportingContent = {
+            Text(
+                "When someone else adds or changes items on a list you've opened on this phone. " +
+                    "Checked about every 15 minutes while the app is closed."
+            )
+        },
+        trailingContent = {
+            Switch(checked = on, onCheckedChange = null, enabled = enabled != null)
+        },
+        modifier = Modifier.toggleable(
+            value = on,
+            enabled = enabled != null,
+            role = Role.Switch,
+            onValueChange = { turnOn -> if (turnOn) requestPermission() else onChange(false) },
+        ),
+    )
+    if ((on || denied) && !allowed) {
+        Column(Modifier.padding(horizontal = 16.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            Text(
+                "Notifications are blocked for FastShopper. Allow them in the system settings.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.error,
+            )
+            TextButton(onClick = { openAppNotificationSettings(context) }) { Text("Open notification settings") }
+        }
+    }
 }
 
 private val ThemeMode.label: String

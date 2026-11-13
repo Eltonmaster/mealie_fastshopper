@@ -2,7 +2,7 @@
 
 An Android companion app for [Mealie](https://mealie.io) that makes adding and ticking off shopping list entries fast, even with bad signal in the shop.
 
-**Status:** early development. Working: connect to a server, pick lists, default list, list grouped by label, tap to check, tap the amount for +/− buttons, reorder items within a section by dragging (⋮ → Reorder items), long press to edit (name, amount, container, note, label), searchable label picker that can create new labels, swipe to delete with undo, offline queue with background sync, add sheet with food autocomplete and remembered containers. Items someone else added or changed get a "new" or "changed" badge until you've seen them, with a count per list. checked items are cleared automatically after a delay you choose in Settings (12 hours by default, or never).
+**Status:** early development. Working: connect to a server, pick lists, default list, list grouped by label, tap to check, tap the amount for +/− buttons, reorder items within a section by dragging (⋮ → Reorder items), long press to edit (name, amount, container, note, label), searchable label picker that can create new labels, swipe to delete with undo, offline queue with background sync, add sheet with food autocomplete and remembered containers. Items someone else added or changed get a "new" or "changed" badge until you've seen them, with a count per list. Optional notifications when someone changes a list while the app is closed. checked items are cleared automatically after a delay you choose in Settings (12 hours by default, or never).
 
 ## Install
 
@@ -28,6 +28,7 @@ Open **Settings** from the ⋮ menu on the list overview.
 
 - **Appearance:** Light, Dark, or Auto (follows the system's dark mode). The choice is kept when you sign out.
 - **Remove checked items after:** 1 hour, 6 hours, 12 hours (default), 1 day, 3 days, or Never. Items are deleted on the server, so they're gone for everyone; if several phones use FastShopper, the shortest delay wins. Kept when you sign out.
+- **Notifications:** off by default. When on, the app checks the lists you've opened on this phone about every 15 minutes (Android decides the exact timing) and posts one notification per list, like "Groceries: 3 new items (Milk, Eggs, Bread)". Tapping it opens the list. Mealie doesn't record who changed an item, so the notification can't say who. Android 13 and newer ask for permission when you turn it on.
 - **About:** the installed version, an update check with download and install, and a link to all releases.
 
 The token is stored encrypted with the Android Keystore.

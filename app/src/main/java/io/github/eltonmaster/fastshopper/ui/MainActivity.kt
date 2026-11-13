@@ -1,5 +1,6 @@
 package io.github.eltonmaster.fastshopper.ui
 
+import android.content.Intent
 import android.graphics.Color
 import android.os.Bundle
 import androidx.activity.ComponentActivity
@@ -39,6 +40,8 @@ import io.github.eltonmaster.fastshopper.ui.setup.SetupScreen
 import io.github.eltonmaster.fastshopper.ui.theme.FastShopperTheme
 import io.github.eltonmaster.fastshopper.ui.update.UpdatePrompt
 import io.github.eltonmaster.fastshopper.ui.update.UpdateViewModel
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.first
 
 object Routes {
@@ -50,8 +53,12 @@ object Routes {
 }
 
 class MainActivity : ComponentActivity() {
+    /** A list to open, from a tapped change notification; cleared once opened. */
+    private val openListRequest = MutableStateFlow<String?>(null)
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        if (savedInstanceState == null) openListRequest.value = intent.listIdToOpen()
         enableEdgeToEdge()
         val settingsStore = (application as FastShopperApp).container.settingsStore
         setContent {
@@ -65,7 +72,7 @@ class MainActivity : ComponentActivity() {
                 SystemBarsFor(dark)
                 FastShopperTheme(darkTheme = dark) {
                     Surface(modifier = Modifier.fillMaxSize()) {
-                        AppRoot(settingsStore, updateViewModel)
+                        AppRoot(settingsStore, updateViewModel, openListRequest) { openListRequest.value = null }
                         UpdatePrompt(updateViewModel)
                     }
                 }
@@ -85,10 +92,22 @@ class MainActivity : ComponentActivity() {
         }
     }
 
-    private companion object {
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        intent.listIdToOpen()?.let { openListRequest.value = it }
+    }
+
+    private fun Intent.listIdToOpen(): String? =
+        if (action == ACTION_OPEN_LIST) getStringExtra(EXTRA_LIST_ID)?.takeIf { it.isNotBlank() } else null
+
+    companion object {
+        /** Opens the list named by [EXTRA_LIST_ID]; used by change notifications. */
+        const val ACTION_OPEN_LIST = "io.github.eltonmaster.fastshopper.OPEN_LIST"
+        const val EXTRA_LIST_ID = "list_id"
+
         // The scrims enableEdgeToEdge() uses by default for 3-button navigation.
-        val LightScrim = Color.argb(0xe6, 0xFF, 0xFF, 0xFF)
-        val DarkScrim = Color.argb(0x80, 0x1b, 0x1b, 0x1b)
+        private val LightScrim = Color.argb(0xe6, 0xFF, 0xFF, 0xFF)
+        private val DarkScrim = Color.argb(0x80, 0x1b, 0x1b, 0x1b)
     }
 }
 
@@ -98,7 +117,12 @@ private sealed interface Launch {
 }
 
 @Composable
-private fun AppRoot(settingsStore: SettingsStore, updateViewModel: UpdateViewModel) {
+private fun AppRoot(
+    settingsStore: SettingsStore,
+    updateViewModel: UpdateViewModel,
+    openListRequest: StateFlow<String?>,
+    onListRequestHandled: () -> Unit,
+) {
     var launch by rememberSaveable(stateSaver = launchSaver) { mutableStateOf<Launch?>(null) }
     LaunchedEffect(Unit) {
         if (launch == null) {
@@ -108,7 +132,7 @@ private fun AppRoot(settingsStore: SettingsStore, updateViewModel: UpdateViewMod
     }
     when (val l = launch) {
         null -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { CircularProgressIndicator() }
-        else -> AppNavHost(l, updateViewModel)
+        else -> AppNavHost(l, updateViewModel, openListRequest, onListRequestHandled)
     }
 }
 
@@ -130,7 +154,12 @@ private val launchSaver = androidx.compose.runtime.saveable.Saver<Launch?, Strin
 )
 
 @Composable
-private fun AppNavHost(launch: Launch, updateViewModel: UpdateViewModel) {
+private fun AppNavHost(
+    launch: Launch,
+    updateViewModel: UpdateViewModel,
+    openListRequest: StateFlow<String?>,
+    onListRequestHandled: () -> Unit,
+) {
     val navController = rememberNavController()
     val start = if (launch is Launch.Setup) Routes.SETUP else Routes.LISTS
 
@@ -179,6 +208,18 @@ private fun AppNavHost(launch: Launch, updateViewModel: UpdateViewModel) {
     val openId = (launch as? Launch.Lists)?.openListId
     LaunchedEffect(openId) {
         if (openId != null) navController.navigate(Routes.list(openId))
+    }
+
+    // A tapped change notification opens its list on top of the overview.
+    val requestedList by openListRequest.collectAsStateWithLifecycle()
+    LaunchedEffect(requestedList) {
+        val id = requestedList ?: return@LaunchedEffect
+        if (launch is Launch.Lists) {
+            navController.navigate(Routes.list(id)) {
+                popUpTo(Routes.LISTS)
+            }
+        }
+        onListRequestHandled()
     }
 }
 

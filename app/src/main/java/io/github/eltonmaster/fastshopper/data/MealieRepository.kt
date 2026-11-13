@@ -60,6 +60,9 @@ data class AddResult(
     val fellBackToNote: Boolean,
 )
 
+/** A list's unseen "new"/"changed" items, for its notification. */
+data class ListChanges(val listId: String, val listName: String, val items: List<ItemEntity>)
+
 class NotConfiguredException : IllegalStateException("App is not connected to a Mealie server")
 
 class MealieRepository(
@@ -401,6 +404,28 @@ class MealieRepository(
     /** Forgets the "new"/"changed" markers of these items, once you've seen them. */
     suspend fun clearRemoteChanges(itemIds: Collection<String>) {
         if (itemIds.isNotEmpty()) dao.clearRemoteChanges(itemIds.toList())
+    }
+
+    // ---- Change notifications ----------------------------------------------------------------
+
+    /** Syncs every list opened on this phone before; true when all of them worked. */
+    suspend fun syncWatchedLists(): Boolean {
+        var ok = true
+        dao.watchedListIds().forEach { id -> if (sync(id).isFailure) ok = false }
+        return ok
+    }
+
+    /** Per list with something a notification hasn't mentioned yet: all its unseen changes. */
+    suspend fun changesToNotify(): List<ListChanges> {
+        val names = dao.allLists().associate { it.id to it.name }
+        return dao.unseenChangesToNotify().groupBy { it.listId }.map { (listId, items) ->
+            ListChanges(listId, names[listId] ?: "Shopping list", items)
+        }
+    }
+
+    /** Remembers that a notification told you about these items, so it doesn't again. */
+    suspend fun markNotified(itemIds: Collection<String>) {
+        if (itemIds.isNotEmpty()) dao.markRemoteChangesNotified(itemIds.toList())
     }
 
     // ---- Outbox ------------------------------------------------------------------------------

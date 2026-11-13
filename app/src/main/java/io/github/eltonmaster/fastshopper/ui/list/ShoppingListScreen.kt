@@ -76,6 +76,8 @@ import androidx.lifecycle.repeatOnLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import io.github.eltonmaster.fastshopper.data.ItemOrder
 import io.github.eltonmaster.fastshopper.ui.appViewModelFactory
+import io.github.eltonmaster.fastshopper.ui.notify.NotificationHint
+import io.github.eltonmaster.fastshopper.ui.notify.TrackVisibleList
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import sh.calvin.reorderable.ReorderableItem
@@ -138,6 +140,7 @@ fun ShoppingListScreen(
     // Poll the server while the list is on screen.
     val lifecycleOwner = LocalLifecycleOwner.current
     MarkChangesSeenOnLeave(lifecycleOwner, viewModel::markShownChangesSeen)
+    TrackVisibleList(listId)
     LaunchedEffect(lifecycleOwner, listId) {
         lifecycleOwner.repeatOnLifecycle(Lifecycle.State.RESUMED) {
             while (true) {
@@ -271,6 +274,7 @@ fun ShoppingListScreen(
         Column(Modifier.fillMaxSize().padding(padding)) {
             SyncBanner(pendingCount = state.pendingCount, error = state.error)
             if (reordering) ReorderBanner()
+            NotificationHint(hasChanges = state.sections.any { section -> section.items.any { it.remoteChange != null } })
             PullToRefreshBox(
                 isRefreshing = state.refreshing,
                 onRefresh = viewModel::refresh,
