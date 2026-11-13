@@ -24,4 +24,14 @@ class SettingsViewModel(private val settingsStore: SettingsStore) : ViewModel() 
     fun setAutoClearDelay(delay: AutoClearDelay) {
         viewModelScope.launch { settingsStore.setAutoClearDelay(delay) }
     }
+
+    val notifyChanges: StateFlow<Boolean?> = settingsStore.notifyChanges
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
+
+    fun setNotifyChanges(enabled: Boolean) {
+        viewModelScope.launch {
+            settingsStore.setNotifyChanges(enabled)
+            settingsStore.setNotifyHintDone() // answered here, so the list screen doesn't ask again
+        }
+    }
 }

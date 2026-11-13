@@ -3,6 +3,7 @@ package io.github.eltonmaster.fastshopper.data
 import android.content.Context
 import androidx.datastore.core.DataStore
 import androidx.datastore.preferences.core.Preferences
+import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
@@ -29,6 +30,8 @@ class SettingsStore(private val context: Context) {
         val DEFAULT_LIST = stringPreferencesKey("default_list_id")
         val THEME = stringPreferencesKey("theme_mode")
         val AUTO_CLEAR_DELAY = stringPreferencesKey("auto_clear_delay")
+        val NOTIFY_CHANGES = booleanPreferencesKey("notify_changes")
+        val NOTIFY_HINT_DONE = booleanPreferencesKey("notify_hint_done")
     }
 
     val settings: Flow<Settings> = context.dataStore.data.map { prefs ->
@@ -79,5 +82,25 @@ class SettingsStore(private val context: Context) {
             if (theme != null) prefs[Keys.THEME] = theme
             if (autoClearDelay != null) prefs[Keys.AUTO_CLEAR_DELAY] = autoClearDelay
         }
+    }
+
+    // ---- Change notifications ----------------------------------------------------------------
+
+    /** Background notifications when someone changes a list. Off until you turn them on. */
+    val notifyChanges: Flow<Boolean> = context.dataStore.data
+        .map { prefs -> prefs[Keys.NOTIFY_CHANGES] ?: false }
+        .distinctUntilChanged()
+
+    suspend fun setNotifyChanges(enabled: Boolean) {
+        context.dataStore.edit { prefs -> prefs[Keys.NOTIFY_CHANGES] = enabled }
+    }
+
+    /** Whether the "turn on notifications?" hint was answered (turned on or dismissed). */
+    val notifyHintDone: Flow<Boolean> = context.dataStore.data
+        .map { prefs -> prefs[Keys.NOTIFY_HINT_DONE] ?: false }
+        .distinctUntilChanged()
+
+    suspend fun setNotifyHintDone() {
+        context.dataStore.edit { prefs -> prefs[Keys.NOTIFY_HINT_DONE] = true }
     }
 }

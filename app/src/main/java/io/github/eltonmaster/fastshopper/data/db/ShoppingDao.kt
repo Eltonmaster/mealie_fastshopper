@@ -249,6 +249,27 @@ abstract class ShoppingDao {
 
     @Query("UPDATE items SET remoteChange = NULL, remoteChangeNotified = 0 WHERE id IN (:itemIds)")
     abstract suspend fun clearRemoteChanges(itemIds: List<String>)
+
+    // ---- Change notifications ----------------------------------------------------------------
+
+    /** Lists opened on this phone before (synced at least once, or with items cached). */
+    @Query("SELECT id FROM lists WHERE lastSyncedAt IS NOT NULL UNION SELECT DISTINCT listId FROM items")
+    abstract suspend fun watchedListIds(): List<String>
+
+    /**
+     * All unseen "new"/"changed" open items of the lists that have at least one a notification
+     * hasn't mentioned yet.
+     */
+    @Query(
+        "SELECT * FROM items WHERE remoteChange IS NOT NULL AND checked = 0 AND pendingDelete = 0 " +
+            "AND listId IN (SELECT listId FROM items WHERE remoteChange IS NOT NULL " +
+            "AND remoteChangeNotified = 0 AND checked = 0 AND pendingDelete = 0) " +
+            "ORDER BY listId, position"
+    )
+    abstract suspend fun unseenChangesToNotify(): List<ItemEntity>
+
+    @Query("UPDATE items SET remoteChangeNotified = 1 WHERE id IN (:itemIds)")
+    abstract suspend fun markRemoteChangesNotified(itemIds: List<String>)
 }
 
 data class ListChangeCount(val listId: String, val count: Int)
