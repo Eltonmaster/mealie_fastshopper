@@ -117,6 +117,12 @@ class ShoppingListViewModel(
         viewModelScope.launch { repository.changeQuantity(item.id, delta) }
     }
 
+    /** Saves the order the open items were dragged into (all sections, top to bottom). */
+    fun reorder(sections: List<Section>) {
+        val ids = sections.flatMap { section -> section.items.map { it.id } }
+        viewModelScope.launch { repository.reorder(listId, ids) }
+    }
+
     fun delete(itemId: String, onDeleted: () -> Unit) {
         viewModelScope.launch { if (repository.delete(itemId)) onDeleted() }
     }

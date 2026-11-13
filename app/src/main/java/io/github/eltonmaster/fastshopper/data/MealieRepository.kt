@@ -341,6 +341,21 @@ class MealieRepository(
         queue(itemId, OpType.UPDATE)
     }
 
+    // ---- Reordering --------------------------------------------------------------------------
+
+    /**
+     * Saves a new order after a drag. [orderedOpenIds] are the list's open items in display order
+     * (sections in order, then items); they're numbered 0 to n−1 and only the items whose position
+     * changed get an UPDATE. New items still land at the end.
+     */
+    suspend fun reorder(listId: String, orderedOpenIds: List<String>) {
+        val current = dao.itemsOfList(listId).associate { it.id to it.position }
+        val changes = ItemOrder.renumber(orderedOpenIds, current)
+        if (changes.isEmpty()) return
+        dao.applyPositions(changes, System.currentTimeMillis())
+        scheduleSync()
+    }
+
     // ---- Auto-clear --------------------------------------------------------------------------
 
     /** Deletes items that were checked more than 12 hours ago, then sends the deletes. */

@@ -1,5 +1,6 @@
 package io.github.eltonmaster.fastshopper.ui.list
 
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -12,13 +13,16 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.List
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.ArrowDropDown
 import androidx.compose.material.icons.filled.ExpandLess
 import androidx.compose.material.icons.filled.ExpandMore
+import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.filled.SwapVert
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
@@ -49,6 +53,8 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -57,11 +63,17 @@ import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.repeatOnLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
+import io.github.eltonmaster.fastshopper.data.ItemOrder
 import io.github.eltonmaster.fastshopper.ui.appViewModelFactory
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import sh.calvin.reorderable.ReorderableItem
+import sh.calvin.reorderable.rememberReorderableLazyListState
 
 private const val POLL_INTERVAL_MS = 5_000L
+
+/** How long a dropped order waits for the database before the list shows the stored order again. */
+private const val DROP_SETTLE_MS = 2_000L
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -82,6 +94,31 @@ fun ShoppingListScreen(
     var editItemId by rememberSaveable { mutableStateOf<String?>(null) }
     var editSession by rememberSaveable { mutableIntStateOf(0) }
     val stepper = rememberStepperState()
+    val haptics = LocalHapticFeedback.current
+
+    // Reorder mode: drag handles instead of the amount, until Done (or back).
+    var reordering by rememberSaveable { mutableStateOf(false) }
+    var menuOpen by remember { mutableStateOf(false) }
+    BackHandler(enabled = reordering) { reordering = false }
+    LaunchedEffect(state.sections.isEmpty()) { if (state.sections.isEmpty()) reordering = false }
+    // While dragging (and until the saved order comes back from the database) the list shows
+    // this local copy, so syncs in the background don't make items jump under the finger.
+    var dragOrder by remember { mutableStateOf<List<Section>?>(null) }
+    var draggingSection by remember { mutableStateOf<String?>(null) }
+    val sections = dragOrder ?: state.sections
+    LaunchedEffect(state.sections, draggingSection) {
+        if (draggingSection != null) return@LaunchedEffect
+        val pending = dragOrder ?: return@LaunchedEffect
+        if (pending.itemIds() != state.sections.itemIds()) {
+            // Not saved yet; give the database a moment, then show what it has either way.
+            delay(DROP_SETTLE_MS)
+        }
+        dragOrder = null
+    }
+    val listState = rememberLazyListState()
+    val reorderState = rememberReorderableLazyListState(listState) { from, to ->
+        dragOrder?.let { current -> dragOrder = moveWithinSection(current, from.key, to.key) }
+    }
     val onEdit: (RowItem) -> Unit = { item ->
         editSession++
         editItemId = item.id
@@ -119,8 +156,10 @@ fun ShoppingListScreen(
     Scaffold(
         snackbarHost = { SnackbarHost(snackbar) },
         floatingActionButton = {
-            FloatingActionButton(onClick = { showAdd = true }) {
-                Icon(Icons.Filled.Add, contentDescription = "Add item")
+            if (!reordering) {
+                FloatingActionButton(onClick = { showAdd = true }) {
+                    Icon(Icons.Filled.Add, contentDescription = "Add item")
+                }
             }
         },
         topBar = {
@@ -168,8 +207,29 @@ fun ShoppingListScreen(
                     }
                 },
                 actions = {
-                    IconButton(onClick = viewModel::refresh) {
-                        Icon(Icons.Filled.Refresh, contentDescription = "Refresh")
+                    if (reordering) {
+                        TextButton(onClick = { reordering = false }) { Text("Done") }
+                    } else {
+                        IconButton(onClick = viewModel::refresh) {
+                            Icon(Icons.Filled.Refresh, contentDescription = "Refresh")
+                        }
+                        Box {
+                            IconButton(onClick = { menuOpen = true }) {
+                                Icon(Icons.Filled.MoreVert, contentDescription = "More options")
+                            }
+                            DropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }) {
+                                DropdownMenuItem(
+                                    text = { Text("Reorder items") },
+                                    leadingIcon = { Icon(Icons.Filled.SwapVert, contentDescription = null) },
+                                    enabled = state.sections.isNotEmpty(),
+                                    onClick = {
+                                        menuOpen = false
+                                        stepper.hide()
+                                        reordering = true
+                                    },
+                                )
+                            }
+                        }
                     }
                 },
             )
@@ -194,6 +254,7 @@ fun ShoppingListScreen(
         }
         Column(Modifier.fillMaxSize().padding(padding)) {
             SyncBanner(pendingCount = state.pendingCount, error = state.error)
+            if (reordering) ReorderBanner()
             PullToRefreshBox(
                 isRefreshing = state.refreshing,
                 onRefresh = viewModel::refresh,
@@ -215,18 +276,47 @@ fun ShoppingListScreen(
                             }
                         }
 
-                    else -> LazyColumn(Modifier.fillMaxSize()) {
-                        state.sections.forEach { section ->
+                    else -> LazyColumn(Modifier.fillMaxSize(), state = listState) {
+                        sections.forEach { section ->
                             item(key = "header-${section.key}") { SectionHeader(section.title) }
                             items(section.items, key = { it.id }) { item ->
-                                SwipeableRow(
-                                    item,
-                                    onToggle = { viewModel.toggle(item) },
-                                    onEdit = { onEdit(item) },
-                                    onDelete = { onDelete(item) },
-                                    stepper = stepper,
-                                    onStep = { delta -> viewModel.changeQuantity(item, delta) },
-                                )
+                                // Only items of the section being dragged in can be dropped on.
+                                ReorderableItem(
+                                    reorderState,
+                                    key = item.id,
+                                    enabled = reordering && (draggingSection == null || draggingSection == section.key),
+                                ) { isDragging ->
+                                    val handle = if (reordering) {
+                                        Modifier.draggableHandle(
+                                            onDragStarted = {
+                                                haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+                                                draggingSection = section.key
+                                                if (dragOrder == null) dragOrder = state.sections
+                                            },
+                                            onDragStopped = {
+                                                dragOrder?.let { dropped ->
+                                                    if (dropped.itemIds() != state.sections.itemIds()) {
+                                                        viewModel.reorder(dropped)
+                                                    }
+                                                }
+                                                draggingSection = null
+                                            },
+                                        )
+                                    } else {
+                                        null
+                                    }
+                                    Surface(shadowElevation = if (isDragging) 6.dp else 0.dp) {
+                                        SwipeableRow(
+                                            item,
+                                            onToggle = { viewModel.toggle(item) },
+                                            onEdit = { onEdit(item) },
+                                            onDelete = { onDelete(item) },
+                                            stepper = stepper,
+                                            onStep = { delta -> viewModel.changeQuantity(item, delta) },
+                                            dragHandle = handle,
+                                        )
+                                    }
+                                }
                             }
                         }
                         checkedSection(
@@ -266,6 +356,31 @@ private fun SyncBanner(pendingCount: Int, error: String?) {
 }
 
 private fun changes(n: Int) = if (n == 1) "1 change" else "$n changes"
+
+@Composable
+private fun ReorderBanner() {
+    Surface(color = MaterialTheme.colorScheme.secondaryContainer, modifier = Modifier.fillMaxWidth()) {
+        Text(
+            "Drag the handles to reorder items within a section. Tap Done when finished.",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSecondaryContainer,
+            modifier = Modifier.padding(horizontal = 16.dp, vertical = 6.dp),
+        )
+    }
+}
+
+private fun List<Section>.itemIds(): List<String> = flatMap { section -> section.items.map { it.id } }
+
+/** Moves an item onto another item's place, only when both are in the same section. */
+private fun moveWithinSection(sections: List<Section>, fromId: Any, toId: Any): List<Section> {
+    val index = sections.indexOfFirst { section -> section.items.any { it.id == fromId } }
+    if (index < 0) return sections
+    val section = sections[index]
+    val from = section.items.indexOfFirst { it.id == fromId }
+    val to = section.items.indexOfFirst { it.id == toId }
+    if (to < 0) return sections
+    return sections.toMutableList().also { it[index] = section.copy(items = ItemOrder.move(section.items, from, to)) }
+}
 
 @Composable
 private fun SectionHeader(title: String) {

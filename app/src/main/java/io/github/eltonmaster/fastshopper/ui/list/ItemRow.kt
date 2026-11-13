@@ -19,6 +19,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.DragHandle
 import androidx.compose.material.icons.filled.Remove
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -92,7 +93,10 @@ fun rememberStepperState(): StepperState {
     return state
 }
 
-/** Swipe left deletes. [onStep] is null for rows that get no stepper (checked items). */
+/**
+ * Swipe left deletes. [onStep] is null for rows that get no stepper (checked items).
+ * [dragHandle] is set while reordering: the row then shows a drag handle and ignores taps and swipes.
+ */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun SwipeableRow(
@@ -102,6 +106,7 @@ fun SwipeableRow(
     onDelete: () -> Unit,
     stepper: StepperState? = null,
     onStep: ((Int) -> Unit)? = null,
+    dragHandle: Modifier? = null,
 ) {
     val dismissState = rememberSwipeToDismissBoxState(
         confirmValueChange = { value ->
@@ -116,6 +121,7 @@ fun SwipeableRow(
     SwipeToDismissBox(
         state = dismissState,
         enableDismissFromStartToEnd = false,
+        enableDismissFromEndToStart = dragHandle == null,
         backgroundContent = {
             Box(
                 Modifier
@@ -132,7 +138,7 @@ fun SwipeableRow(
             }
         },
     ) {
-        ItemRow(item, onToggle, onEdit, stepper, onStep)
+        ItemRow(item, onToggle, onEdit, stepper, onStep, dragHandle)
     }
 }
 
@@ -145,9 +151,11 @@ fun ItemRow(
     onEdit: () -> Unit,
     stepper: StepperState? = null,
     onStep: ((Int) -> Unit)? = null,
+    dragHandle: Modifier? = null,
 ) {
     val haptics = LocalHapticFeedback.current
-    val canStep = !item.checked && stepper != null && onStep != null
+    val reordering = dragHandle != null
+    val canStep = !item.checked && !reordering && stepper != null && onStep != null
     Surface(color = MaterialTheme.colorScheme.surface) {
         Row(
             verticalAlignment = Alignment.CenterVertically,
@@ -155,6 +163,7 @@ fun ItemRow(
                 .fillMaxWidth()
                 .heightIn(min = 56.dp)
                 .combinedClickable(
+                    enabled = !reordering,
                     onClick = onToggle,
                     onLongClick = {
                         haptics.performHapticFeedback(HapticFeedbackType.LongPress)
@@ -162,9 +171,12 @@ fun ItemRow(
                     },
                     onLongClickLabel = "Edit",
                 )
-                .padding(start = 4.dp, end = if (canStep) 4.dp else 16.dp),
+                .padding(start = 4.dp, end = if (canStep || reordering) 4.dp else 16.dp),
         ) {
-            Checkbox(checked = item.checked, onCheckedChange = { onToggle() })
+            Checkbox(
+                checked = item.checked,
+                onCheckedChange = if (reordering) null else { _ -> onToggle() },
+            )
             Column(Modifier.weight(1f), verticalArrangement = Arrangement.Center) {
                 Text(
                     item.title,
@@ -178,6 +190,27 @@ fun ItemRow(
                 }
             }
             when {
+                dragHandle != null -> {
+                    if (item.amount.isNotEmpty()) {
+                        Spacer(Modifier.width(12.dp))
+                        Text(
+                            item.amount,
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                    Box(
+                        contentAlignment = Alignment.Center,
+                        modifier = dragHandle.heightIn(min = 48.dp).widthIn(min = 48.dp),
+                    ) {
+                        Icon(
+                            Icons.Filled.DragHandle,
+                            contentDescription = "Drag to reorder",
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                }
+
                 canStep && stepper != null && onStep != null && stepper.itemId == item.id -> QuantityStepper(
                     item = item,
                     onStep = { delta ->
