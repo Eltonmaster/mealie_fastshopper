@@ -9,6 +9,7 @@ import io.github.eltonmaster.fastshopper.data.db.ItemEntity
 import io.github.eltonmaster.fastshopper.data.db.LabelOrderEntity
 import io.github.eltonmaster.fastshopper.data.db.ListEntity
 import io.github.eltonmaster.fastshopper.data.toUserMessage
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -25,6 +26,8 @@ data class RowItem(
     /** Raw quantity for the +/− stepper (0 means no amount). */
     val quantity: Double,
     val checked: Boolean,
+    /** [io.github.eltonmaster.fastshopper.data.RemoteChanges.NEW] or `CHANGED` while unseen, else null. */
+    val remoteChange: String? = null,
 )
 
 data class Section(
@@ -41,12 +44,21 @@ data class ShoppingListUiState(
     val checkedExpanded: Boolean = false,
     val autoClearDelay: AutoClearDelay = AutoClearDelay.DEFAULT,
     val pendingCount: Int = 0,
+    /** Unseen "new"/"changed" items per list id, for the list switcher. */
+    val newCounts: Map<String, Int> = emptyMap(),
     val loadedOnce: Boolean = false,
     val refreshing: Boolean = false,
     val error: String? = null,
 ) {
     val isEmpty: Boolean get() = sections.isEmpty() && checked.isEmpty()
 }
+
+private data class Content(
+    val items: List<ItemEntity>,
+    val labels: List<LabelOrderEntity>,
+    val lists: List<ListEntity>,
+    val newCounts: Map<String, Int>,
+)
 
 private data class SyncStatus(
     val loadedOnce: Boolean = false,
@@ -65,7 +77,8 @@ class ShoppingListViewModel(
         repository.observeItems(listId),
         repository.observeLabelOrder(listId),
         repository.observeLists(),
-    ) { items, labels, lists -> Triple(items, labels, lists) }
+        repository.observeRemoteChangeCounts(),
+    ) { items, labels, lists, newCounts -> Content(items, labels, lists, newCounts) }
 
     val state: StateFlow<ShoppingListUiState> = combine(
         content,
@@ -73,7 +86,7 @@ class ShoppingListViewModel(
         status,
         checkedExpanded,
         repository.observeAutoClearDelay(),
-    ) { (items, labels, lists), pending, s, expanded, autoClearDelay ->
+    ) { (items, labels, lists, newCounts), pending, s, expanded, autoClearDelay ->
         val (open, done) = items.partition { !it.checked }
         ShoppingListUiState(
             listName = lists.firstOrNull { it.id == listId }?.name.orEmpty(),
@@ -83,6 +96,7 @@ class ShoppingListViewModel(
             checkedExpanded = expanded,
             autoClearDelay = autoClearDelay,
             pendingCount = pending,
+            newCounts = newCounts,
             loadedOnce = s.loadedOnce || items.isNotEmpty(),
             refreshing = s.refreshing,
             error = s.error,
@@ -137,6 +151,18 @@ class ShoppingListViewModel(
 
     fun toggleCheckedExpanded() = checkedExpanded.update { !it }
 
+    /**
+     * Called when you leave the list after it was on screen: everything marked "new" or "changed"
+     * that was shown counts as seen. Runs to the end even if the screen is being closed.
+     */
+    fun markShownChangesSeen() {
+        val shown = state.value.let { it.sections.flatMap(Section::items) + it.checked }
+            .filter { it.remoteChange != null }
+            .map { it.id }
+        if (shown.isEmpty()) return
+        viewModelScope.launch(NonCancellable) { repository.clearRemoteChanges(shown) }
+    }
+
     fun uncheckAll() {
         viewModelScope.launch {
             state.value.checked.forEach { repository.setChecked(it.id, false) }
@@ -176,4 +202,5 @@ private fun ItemEntity.toRow() = RowItem(
     amount = ItemFormat.amount(quantity, unitName, unitAbbreviation, unitUseAbbreviation),
     quantity = quantity,
     checked = checked,
+    remoteChange = remoteChange,
 )

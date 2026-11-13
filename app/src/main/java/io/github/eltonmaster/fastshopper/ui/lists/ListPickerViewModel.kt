@@ -21,6 +21,8 @@ data class ListPickerUiState(
     val defaultListId: String? = null,
     val userName: String? = null,
     val serverUrl: String? = null,
+    /** Open items per list id that someone else added or changed since you last looked. */
+    val newCounts: Map<String, Int> = emptyMap(),
 )
 
 class ListPickerViewModel(
@@ -30,11 +32,12 @@ class ListPickerViewModel(
     private val load = MutableStateFlow(ListPickerUiState())
 
     val state: StateFlow<ListPickerUiState> =
-        combine(load, settingsStore.settings) { s, settings ->
+        combine(load, settingsStore.settings, repository.observeRemoteChangeCounts()) { s, settings, newCounts ->
             s.copy(
                 defaultListId = settings.defaultListId,
                 userName = settings.userName,
                 serverUrl = settings.serverUrl,
+                newCounts = newCounts,
             )
         }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), ListPickerUiState())
 

@@ -1,6 +1,9 @@
 package io.github.eltonmaster.fastshopper.ui.list
 
 import androidx.activity.compose.BackHandler
+import android.app.Activity
+import android.content.Context
+import android.content.ContextWrapper
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -23,6 +26,7 @@ import androidx.compose.material.icons.filled.ExpandMore
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.SwapVert
+import androidx.compose.material3.Badge
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
@@ -43,22 +47,29 @@ import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalHapticFeedback
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.LifecycleOwner
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.repeatOnLifecycle
@@ -126,6 +137,7 @@ fun ShoppingListScreen(
 
     // Poll the server while the list is on screen.
     val lifecycleOwner = LocalLifecycleOwner.current
+    MarkChangesSeenOnLeave(lifecycleOwner, viewModel::markShownChangesSeen)
     LaunchedEffect(lifecycleOwner, listId) {
         lifecycleOwner.repeatOnLifecycle(Lifecycle.State.RESUMED) {
             while (true) {
@@ -181,6 +193,7 @@ fun ShoppingListScreen(
                         }
                         DropdownMenu(expanded = switcherOpen, onDismissRequest = { switcherOpen = false }) {
                             state.lists.forEach { list ->
+                                val newCount = state.newCounts[list.id] ?: 0
                                 DropdownMenuItem(
                                     text = {
                                         Text(
@@ -188,6 +201,9 @@ fun ShoppingListScreen(
                                             fontWeight = if (list.id == listId) FontWeight.Bold else FontWeight.Normal,
                                         )
                                     },
+                                    trailingIcon = if (newCount > 0 && list.id != listId) {
+                                        { NewCountBadge(newCount) }
+                                    } else null,
                                     onClick = {
                                         switcherOpen = false
                                         if (list.id != listId) onSwitchList(list.id)
@@ -391,6 +407,47 @@ private fun SectionHeader(title: String) {
         color = MaterialTheme.colorScheme.primary,
         modifier = Modifier.padding(start = 16.dp, end = 16.dp, top = 16.dp, bottom = 4.dp),
     )
+}
+
+@Composable
+private fun NewCountBadge(count: Int) {
+    Badge(containerColor = MaterialTheme.colorScheme.primary) {
+        Text(
+            count.toString(),
+            modifier = Modifier.semantics { contentDescription = "$count new" },
+        )
+    }
+}
+
+/**
+ * Clears the "new" markers once you leave the list after it was on screen: back to the overview,
+ * another list, or another app. Turning the phone doesn't count as leaving.
+ */
+@Composable
+private fun MarkChangesSeenOnLeave(lifecycleOwner: LifecycleOwner, onLeave: () -> Unit) {
+    val activity = LocalContext.current.findActivity()
+    val currentOnLeave by rememberUpdatedState(onLeave)
+    DisposableEffect(lifecycleOwner, activity) {
+        var shown = false
+        val observer = LifecycleEventObserver { _, event ->
+            when (event) {
+                Lifecycle.Event.ON_RESUME -> shown = true
+                Lifecycle.Event.ON_STOP -> {
+                    if (shown && activity?.isChangingConfigurations != true) currentOnLeave()
+                    shown = false
+                }
+                else -> Unit
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+    }
+}
+
+private tailrec fun Context.findActivity(): Activity? = when (this) {
+    is Activity -> this
+    is ContextWrapper -> baseContext.findActivity()
+    else -> null
 }
 
 private fun LazyListScope.checkedSection(

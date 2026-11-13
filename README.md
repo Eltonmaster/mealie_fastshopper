@@ -2,7 +2,7 @@
 
 An Android companion app for [Mealie](https://mealie.io) that makes adding and ticking off shopping list entries fast, even with bad signal in the shop.
 
-**Status:** early development. Working: connect to a server, pick lists, default list, list grouped by label, tap to check, tap the amount for +/− buttons, reorder items within a section by dragging (⋮ → Reorder items), long press to edit (name, amount, container, note, label), searchable label picker that can create new labels, swipe to delete with undo, offline queue with background sync, add sheet with food autocomplete and remembered containers. checked items are cleared automatically after a delay you choose in Settings (12 hours by default, or never).
+**Status:** early development. Working: connect to a server, pick lists, default list, list grouped by label, tap to check, tap the amount for +/− buttons, reorder items within a section by dragging (⋮ → Reorder items), long press to edit (name, amount, container, note, label), searchable label picker that can create new labels, swipe to delete with undo, offline queue with background sync, add sheet with food autocomplete and remembered containers. Items someone else added or changed get a "new" or "changed" badge until you've seen them, with a count per list. checked items are cleared automatically after a delay you choose in Settings (12 hours by default, or never).
 
 ## Install
 
