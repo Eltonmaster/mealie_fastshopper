@@ -276,6 +276,10 @@ abstract class ShoppingDao {
     @Upsert
     abstract suspend fun upsertList(list: ListEntity)
 
+    /** Changes only the name, so any other cached fields of the list stay as they are. */
+    @Query("UPDATE lists SET name = :name WHERE id = :listId")
+    abstract suspend fun renameList(listId: String, name: String)
+
     @Query("DELETE FROM lists WHERE id = :listId")
     protected abstract suspend fun deleteListRow(listId: String)
 

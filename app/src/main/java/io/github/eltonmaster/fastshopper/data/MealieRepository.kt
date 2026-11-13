@@ -497,7 +497,7 @@ class MealieRepository(
             val body = ListEdit.renamed(api.getShoppingListJson(listId), name)
                 ?: throw SerializationException("The list came back without its items")
             api.updateShoppingList(listId, body).close()
-            dao.upsertList(ListEntity(listId, name))
+            dao.renameList(listId, name)
         }
     }
 
