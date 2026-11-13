@@ -270,6 +270,29 @@ abstract class ShoppingDao {
 
     @Query("UPDATE items SET remoteChangeNotified = 1 WHERE id IN (:itemIds)")
     abstract suspend fun markRemoteChangesNotified(itemIds: List<String>)
+
+    // ---- List management ---------------------------------------------------------------------
+
+    @Upsert
+    abstract suspend fun upsertList(list: ListEntity)
+
+    @Query("DELETE FROM lists WHERE id = :listId")
+    protected abstract suspend fun deleteListRow(listId: String)
+
+    @Query("DELETE FROM items WHERE listId = :listId")
+    protected abstract suspend fun deleteItemsOfList(listId: String)
+
+    @Query("DELETE FROM pending_ops WHERE itemId IN (SELECT id FROM items WHERE listId = :listId)")
+    protected abstract suspend fun deleteOpsOfList(listId: String)
+
+    /** Removes a deleted list from the cache: its items, label order and queued changes. */
+    @Transaction
+    open suspend fun forgetList(listId: String) {
+        deleteOpsOfList(listId)
+        deleteItemsOfList(listId)
+        deleteLabelOrder(listId)
+        deleteListRow(listId)
+    }
 }
 
 data class ListChangeCount(val listId: String, val count: Int)
