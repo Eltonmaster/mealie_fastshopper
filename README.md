@@ -2,7 +2,7 @@
 
 An Android companion app for [Mealie](https://mealie.io) that makes adding and ticking off shopping list entries fast, even with bad signal in the shop.
 
-**Status:** early development. Working: connect to a server, pick lists, default list, list grouped by label, tap to check, tap the amount for +/− buttons, reorder items within a section by dragging (⋮ → Reorder items), long press to edit (name, amount, container, note, label), searchable label picker that can create new labels, swipe to delete with undo, offline queue with background sync, add sheet with food autocomplete and remembered containers. checked items are cleared automatically 12 hours after checking.
+**Status:** early development. Working: connect to a server, pick lists, default list, list grouped by label, tap to check, tap the amount for +/− buttons, reorder items within a section by dragging (⋮ → Reorder items), long press to edit (name, amount, container, note, label), searchable label picker that can create new labels, swipe to delete with undo, offline queue with background sync, add sheet with food autocomplete and remembered containers. checked items are cleared automatically after a delay you choose in Settings (12 hours by default, or never).
 
 ## Install
 
@@ -27,6 +27,7 @@ Want the newest unreleased build? Every push to `main` and every pull request bu
 Open **Settings** from the ⋮ menu on the list overview.
 
 - **Appearance:** Light, Dark, or Auto (follows the system's dark mode). The choice is kept when you sign out.
+- **Remove checked items after:** 1 hour, 6 hours, 12 hours (default), 1 day, 3 days, or Never. Items are deleted on the server, so they're gone for everyone; if several phones use FastShopper, the shortest delay wins. Kept when you sign out.
 - **About:** the installed version, an update check with download and install, and a link to all releases.
 
 The token is stored encrypted with the Android Keystore.

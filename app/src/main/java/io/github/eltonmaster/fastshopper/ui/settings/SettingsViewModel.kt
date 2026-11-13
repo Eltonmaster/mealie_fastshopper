@@ -2,6 +2,7 @@ package io.github.eltonmaster.fastshopper.ui.settings
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import io.github.eltonmaster.fastshopper.data.AutoClearDelay
 import io.github.eltonmaster.fastshopper.data.SettingsStore
 import io.github.eltonmaster.fastshopper.data.ThemeMode
 import kotlinx.coroutines.flow.SharingStarted
@@ -15,5 +16,12 @@ class SettingsViewModel(private val settingsStore: SettingsStore) : ViewModel() 
 
     fun setThemeMode(mode: ThemeMode) {
         viewModelScope.launch { settingsStore.setThemeMode(mode) }
+    }
+
+    val autoClearDelay: StateFlow<AutoClearDelay?> = settingsStore.autoClearDelay
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
+
+    fun setAutoClearDelay(delay: AutoClearDelay) {
+        viewModelScope.launch { settingsStore.setAutoClearDelay(delay) }
     }
 }

@@ -36,6 +36,7 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import io.github.eltonmaster.fastshopper.BuildConfig
+import io.github.eltonmaster.fastshopper.data.AutoClearDelay
 import io.github.eltonmaster.fastshopper.data.ThemeMode
 import io.github.eltonmaster.fastshopper.data.update.AvailableUpdate
 import io.github.eltonmaster.fastshopper.data.update.UpdateChecker
@@ -55,6 +56,7 @@ fun SettingsScreen(
     ),
 ) {
     val themeMode by viewModel.themeMode.collectAsStateWithLifecycle()
+    val autoClearDelay by viewModel.autoClearDelay.collectAsStateWithLifecycle()
     val check by updateViewModel.check.collectAsStateWithLifecycle()
     val updateState by updateViewModel.state.collectAsStateWithLifecycle()
 
@@ -78,6 +80,11 @@ fun SettingsScreen(
         ) {
             SectionHeader("Appearance")
             ThemeChoice(selected = themeMode, onSelect = viewModel::setThemeMode)
+
+            HorizontalDivider(Modifier.padding(top = 8.dp))
+
+            SectionHeader("Remove checked items after")
+            AutoClearChoice(selected = autoClearDelay, onSelect = viewModel::setAutoClearDelay)
 
             HorizontalDivider(Modifier.padding(top = 8.dp))
 
@@ -132,6 +139,34 @@ private fun ThemeChoice(selected: ThemeMode?, onSelect: (ThemeMode) -> Unit) {
             )
         }
     }
+}
+
+/** The delay options from shortest to Never; nothing is ticked until loaded. */
+@Composable
+private fun AutoClearChoice(selected: AutoClearDelay?, onSelect: (AutoClearDelay) -> Unit) {
+    Column(Modifier.selectableGroup()) {
+        AutoClearDelay.entries.forEach { delay ->
+            ListItem(
+                headlineContent = { Text(delay.label) },
+                supportingContent = if (delay == AutoClearDelay.DEFAULT) {
+                    { Text("Default") }
+                } else null,
+                leadingContent = { RadioButton(selected = delay == selected, onClick = null) },
+                modifier = Modifier.selectable(
+                    selected = delay == selected,
+                    onClick = { onSelect(delay) },
+                    role = Role.RadioButton,
+                ),
+            )
+        }
+    }
+    // Each phone deletes on the server, so the phone with the shortest delay clears first.
+    Text(
+        "Deleted for everyone. If several phones use FastShopper, the shortest delay wins.",
+        style = MaterialTheme.typography.bodySmall,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+        modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
+    )
 }
 
 @Composable

@@ -6,10 +6,8 @@ import java.time.LocalDateTime
 import java.time.OffsetDateTime
 import java.time.ZoneOffset
 
-/** Checked items are deleted this long after they were checked (unit-tested). */
+/** Checked items are deleted a chosen [AutoClearDelay] after they were checked (unit-tested). */
 object AutoClear {
-    val AFTER: Duration = Duration.ofHours(12)
-
     /**
      * Mealie has no "checked at" field; a checked item's `updatedAt` is when it was last changed,
      * i.e. when it was checked. Mealie may send it with or without an offset; without one it's UTC.
@@ -20,8 +18,14 @@ object AutoClear {
             ?: runCatching { LocalDateTime.parse(updatedAt).toInstant(ZoneOffset.UTC) }.getOrNull()
     }
 
-    fun isExpired(checked: Boolean, updatedAt: String?, now: Instant, after: Duration = AFTER): Boolean {
+    fun isExpired(
+        checked: Boolean,
+        updatedAt: String?,
+        now: Instant,
+        delay: AutoClearDelay = AutoClearDelay.DEFAULT,
+    ): Boolean {
         if (!checked) return false
+        val after = delay.duration ?: return false
         val changed = parse(updatedAt) ?: return false
         return Duration.between(changed, now) >= after
     }
