@@ -12,6 +12,8 @@ Download the latest `fastshopper-x.y.z.apk` from [Releases](../../releases/lates
 
 Release builds check GitHub Releases each time the app opens. When a newer version is out, a dialog shows what's new; tap **Update** to download the APK (its SHA-256 is checked against the release) and the system installer opens. The first time, Android asks you to allow FastShopper to install apps. Pre-releases are not offered, and debug builds don't check because their signing key differs.
 
+You can also check at any time in **Settings → About** (overflow menu on the list overview), which shows the installed version, what's new in a newer release, and a **Download and install** button.
+
 Want the newest unreleased build? Every push to `main` and every pull request builds a debug APK: open the run under **Actions → CI** and download `fastshopper-debug-apk`. Debug and release builds are signed with different keys, so switching between them means uninstalling first.
 
 ## Connect
@@ -19,6 +21,13 @@ Want the newest unreleased build? Every push to `main` and every pull request bu
 1. In Mealie, open **Profile → API Tokens** and create a token.
 2. Open the app, enter your server URL (e.g. `https://mealie.example.com`) and paste the token.
 3. Pick a list. Tap the star to open that list automatically on launch.
+
+## Settings
+
+Open **Settings** from the ⋮ menu on the list overview.
+
+- **Appearance:** Light, Dark, or Auto (follows the system's dark mode). The choice is kept when you sign out.
+- **About:** the installed version, an update check with download and install, and a link to all releases.
 
 The token is stored encrypted with the Android Keystore.
 

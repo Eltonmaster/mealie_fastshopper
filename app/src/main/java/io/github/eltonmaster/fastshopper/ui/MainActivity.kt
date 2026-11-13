@@ -1,14 +1,18 @@
 package io.github.eltonmaster.fastshopper.ui
 
+import android.graphics.Color
 import android.os.Bundle
 import androidx.activity.ComponentActivity
+import androidx.activity.SystemBarStyle
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Surface
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -16,6 +20,9 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.lifecycle.compose.dropUnlessResumed
+import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavHostController
 import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
@@ -24,17 +31,21 @@ import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
 import io.github.eltonmaster.fastshopper.FastShopperApp
 import io.github.eltonmaster.fastshopper.data.SettingsStore
+import io.github.eltonmaster.fastshopper.data.ThemeMode
 import io.github.eltonmaster.fastshopper.ui.list.ShoppingListScreen
 import io.github.eltonmaster.fastshopper.ui.lists.ListPickerScreen
+import io.github.eltonmaster.fastshopper.ui.settings.SettingsScreen
 import io.github.eltonmaster.fastshopper.ui.setup.SetupScreen
 import io.github.eltonmaster.fastshopper.ui.theme.FastShopperTheme
 import io.github.eltonmaster.fastshopper.ui.update.UpdatePrompt
+import io.github.eltonmaster.fastshopper.ui.update.UpdateViewModel
 import kotlinx.coroutines.flow.first
 
 object Routes {
     const val SETUP = "setup"
     const val LISTS = "lists"
     const val LIST = "list/{listId}"
+    const val SETTINGS = "settings"
     fun list(id: String) = "list/$id"
 }
 
@@ -44,13 +55,40 @@ class MainActivity : ComponentActivity() {
         enableEdgeToEdge()
         val settingsStore = (application as FastShopperApp).container.settingsStore
         setContent {
-            FastShopperTheme {
-                Surface(modifier = Modifier.fillMaxSize()) {
-                    AppRoot(settingsStore)
-                    UpdatePrompt()
+            // One instance for the whole activity, shared by the update dialog and Settings.
+            val updateViewModel: UpdateViewModel = viewModel(factory = UpdateViewModel.Factory)
+            val themeMode by settingsStore.themeMode.collectAsStateWithLifecycle<ThemeMode?>(initialValue = null)
+            val systemDark = isSystemInDarkTheme()
+            // Draw nothing for the moment it takes to read the theme, rather than flash the wrong one.
+            themeMode?.let { mode ->
+                val dark = mode.isDark(systemDark)
+                SystemBarsFor(dark)
+                FastShopperTheme(darkTheme = dark) {
+                    Surface(modifier = Modifier.fillMaxSize()) {
+                        AppRoot(settingsStore, updateViewModel)
+                        UpdatePrompt(updateViewModel)
+                    }
                 }
             }
         }
+    }
+
+    /** Status and navigation bar icons follow the app's theme, which can differ from the system's. */
+    @Composable
+    private fun SystemBarsFor(dark: Boolean) {
+        DisposableEffect(dark) {
+            enableEdgeToEdge(
+                statusBarStyle = SystemBarStyle.auto(Color.TRANSPARENT, Color.TRANSPARENT) { dark },
+                navigationBarStyle = SystemBarStyle.auto(LightScrim, DarkScrim) { dark },
+            )
+            onDispose {}
+        }
+    }
+
+    private companion object {
+        // The scrims enableEdgeToEdge() uses by default for 3-button navigation.
+        val LightScrim = Color.argb(0xe6, 0xFF, 0xFF, 0xFF)
+        val DarkScrim = Color.argb(0x80, 0x1b, 0x1b, 0x1b)
     }
 }
 
@@ -60,7 +98,7 @@ private sealed interface Launch {
 }
 
 @Composable
-private fun AppRoot(settingsStore: SettingsStore) {
+private fun AppRoot(settingsStore: SettingsStore, updateViewModel: UpdateViewModel) {
     var launch by rememberSaveable(stateSaver = launchSaver) { mutableStateOf<Launch?>(null) }
     LaunchedEffect(Unit) {
         if (launch == null) {
@@ -70,7 +108,7 @@ private fun AppRoot(settingsStore: SettingsStore) {
     }
     when (val l = launch) {
         null -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { CircularProgressIndicator() }
-        else -> AppNavHost(l)
+        else -> AppNavHost(l, updateViewModel)
     }
 }
 
@@ -92,7 +130,7 @@ private val launchSaver = androidx.compose.runtime.saveable.Saver<Launch?, Strin
 )
 
 @Composable
-private fun AppNavHost(launch: Launch) {
+private fun AppNavHost(launch: Launch, updateViewModel: UpdateViewModel) {
     val navController = rememberNavController()
     val start = if (launch is Launch.Setup) Routes.SETUP else Routes.LISTS
 
@@ -103,6 +141,7 @@ private fun AppNavHost(launch: Launch) {
         composable(Routes.LISTS) {
             ListPickerScreen(
                 onOpenList = { id -> navController.navigate(Routes.list(id)) },
+                onOpenSettings = { navController.navigate(Routes.SETTINGS) { launchSingleTop = true } },
                 onSignedOut = {
                     navController.navigate(Routes.SETUP) {
                         popUpTo(navController.graph.id) { inclusive = true }
@@ -126,6 +165,12 @@ private fun AppNavHost(launch: Launch) {
                         popUpTo(Routes.LISTS)
                     }
                 },
+            )
+        }
+        composable(Routes.SETTINGS) {
+            SettingsScreen(
+                updateViewModel = updateViewModel,
+                onBack = dropUnlessResumed { navController.popBackStack() },
             )
         }
     }

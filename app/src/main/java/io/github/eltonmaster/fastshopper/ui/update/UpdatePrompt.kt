@@ -81,7 +81,7 @@ fun UpdatePrompt(viewModel: UpdateViewModel = viewModel(factory = UpdateViewMode
             update = s.update,
             onDismiss = viewModel::dismiss,
             confirmLabel = "Update",
-            onConfirm = viewModel::download,
+            onConfirm = { viewModel.download() },
             dismissLabel = "Later",
         )
         is UpdateState.Downloading -> UpdateDialog(
@@ -115,7 +115,7 @@ fun UpdatePrompt(viewModel: UpdateViewModel = viewModel(factory = UpdateViewMode
             update = s.update,
             onDismiss = viewModel::dismiss,
             confirmLabel = "Retry",
-            onConfirm = viewModel::download,
+            onConfirm = { viewModel.download() },
             dismissLabel = "Close",
         ) {
             Text(
@@ -165,7 +165,7 @@ private fun UpdateDialog(
     )
 }
 
-private fun formatSize(bytes: Long): String =
+internal fun formatSize(bytes: Long): String =
     if (bytes >= 1_000_000) "%.1f MB".format(bytes / 1_000_000.0) else "${(bytes + 999) / 1000} KB"
 
 private fun launchInstaller(context: Context, apk: File) {
