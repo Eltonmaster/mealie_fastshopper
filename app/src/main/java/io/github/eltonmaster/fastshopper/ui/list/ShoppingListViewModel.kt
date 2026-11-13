@@ -21,6 +21,8 @@ data class RowItem(
     val title: String,
     val subtitle: String?,
     val amount: String,
+    /** Raw quantity for the +/− stepper (0 means no amount). */
+    val quantity: Double,
     val checked: Boolean,
 )
 
@@ -111,6 +113,10 @@ class ShoppingListViewModel(
         viewModelScope.launch { repository.setChecked(item.id, !item.checked) }
     }
 
+    fun changeQuantity(item: RowItem, delta: Int) {
+        viewModelScope.launch { repository.changeQuantity(item.id, delta) }
+    }
+
     fun delete(itemId: String, onDeleted: () -> Unit) {
         viewModelScope.launch { if (repository.delete(itemId)) onDeleted() }
     }
@@ -158,5 +164,6 @@ private fun ItemEntity.toRow() = RowItem(
     title = ItemFormat.title(foodName, note, display),
     subtitle = ItemFormat.subtitle(foodName, note),
     amount = ItemFormat.amount(quantity, unitName, unitAbbreviation, unitUseAbbreviation),
+    quantity = quantity,
     checked = checked,
 )

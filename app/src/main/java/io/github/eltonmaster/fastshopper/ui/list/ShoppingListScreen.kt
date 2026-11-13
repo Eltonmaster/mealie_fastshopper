@@ -1,10 +1,6 @@
 package io.github.eltonmaster.fastshopper.ui.list
 
-import androidx.compose.foundation.ExperimentalFoundationApi
-import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.combinedClickable
-import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -13,7 +9,6 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.foundation.lazy.items
@@ -21,11 +16,9 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.List
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.ArrowDropDown
-import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.ExpandLess
 import androidx.compose.material.icons.filled.ExpandMore
 import androidx.compose.material.icons.filled.Refresh
-import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
@@ -41,13 +34,10 @@ import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.SnackbarResult
 import androidx.compose.material3.Surface
-import androidx.compose.material3.SwipeToDismissBox
-import androidx.compose.material3.SwipeToDismissBoxValue
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
-import androidx.compose.material3.rememberSwipeToDismissBoxState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -59,10 +49,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.hapticfeedback.HapticFeedbackType
-import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.Lifecycle
@@ -94,6 +81,7 @@ fun ShoppingListScreen(
     var showAdd by rememberSaveable { mutableStateOf(false) }
     var editItemId by rememberSaveable { mutableStateOf<String?>(null) }
     var editSession by rememberSaveable { mutableIntStateOf(0) }
+    val stepper = rememberStepperState()
     val onEdit: (RowItem) -> Unit = { item ->
         editSession++
         editItemId = item.id
@@ -236,6 +224,8 @@ fun ShoppingListScreen(
                                     onToggle = { viewModel.toggle(item) },
                                     onEdit = { onEdit(item) },
                                     onDelete = { onDelete(item) },
+                                    stepper = stepper,
+                                    onStep = { delta -> viewModel.changeQuantity(item, delta) },
                                 )
                             }
                         }
@@ -285,88 +275,6 @@ private fun SectionHeader(title: String) {
         color = MaterialTheme.colorScheme.primary,
         modifier = Modifier.padding(start = 16.dp, end = 16.dp, top = 16.dp, bottom = 4.dp),
     )
-}
-
-@OptIn(ExperimentalMaterial3Api::class)
-@Composable
-private fun SwipeableRow(item: RowItem, onToggle: () -> Unit, onEdit: () -> Unit, onDelete: () -> Unit) {
-    val dismissState = rememberSwipeToDismissBoxState(
-        confirmValueChange = { value ->
-            if (value == SwipeToDismissBoxValue.EndToStart) {
-                onDelete()
-                true
-            } else {
-                false
-            }
-        },
-    )
-    SwipeToDismissBox(
-        state = dismissState,
-        enableDismissFromStartToEnd = false,
-        backgroundContent = {
-            Box(
-                Modifier
-                    .fillMaxSize()
-                    .background(MaterialTheme.colorScheme.errorContainer)
-                    .padding(horizontal = 24.dp),
-                contentAlignment = Alignment.CenterEnd,
-            ) {
-                Icon(
-                    Icons.Filled.Delete,
-                    contentDescription = "Delete",
-                    tint = MaterialTheme.colorScheme.onErrorContainer,
-                )
-            }
-        },
-    ) {
-        ItemRow(item, onToggle, onEdit)
-    }
-}
-
-/** Tap checks the item off, long press opens it for editing. */
-@OptIn(ExperimentalFoundationApi::class)
-@Composable
-private fun ItemRow(item: RowItem, onToggle: () -> Unit, onEdit: () -> Unit) {
-    val haptics = LocalHapticFeedback.current
-    Surface(color = MaterialTheme.colorScheme.surface) {
-        Row(
-            verticalAlignment = Alignment.CenterVertically,
-            modifier = Modifier
-                .fillMaxWidth()
-                .heightIn(min = 56.dp)
-                .combinedClickable(
-                    onClick = onToggle,
-                    onLongClick = {
-                        haptics.performHapticFeedback(HapticFeedbackType.LongPress)
-                        onEdit()
-                    },
-                    onLongClickLabel = "Edit",
-                )
-                .padding(start = 4.dp, end = 16.dp),
-        ) {
-            Checkbox(checked = item.checked, onCheckedChange = { onToggle() })
-            Column(Modifier.weight(1f), verticalArrangement = Arrangement.Center) {
-                Text(
-                    item.title,
-                    style = MaterialTheme.typography.bodyLarge,
-                    textDecoration = if (item.checked) TextDecoration.LineThrough else null,
-                    color = if (item.checked) MaterialTheme.colorScheme.onSurfaceVariant
-                    else MaterialTheme.colorScheme.onSurface,
-                )
-                item.subtitle?.let {
-                    Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                }
-            }
-            if (item.amount.isNotEmpty()) {
-                Spacer(Modifier.width(12.dp))
-                Text(
-                    item.amount,
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-            }
-        }
-    }
 }
 
 private fun LazyListScope.checkedSection(
