@@ -194,4 +194,22 @@ abstract class ShoppingDao {
 
     @Query("SELECT DISTINCT listId FROM items")
     abstract suspend fun cachedListIds(): List<String>
+
+    // ---- Reordering --------------------------------------------------------------------------
+
+    @Query("UPDATE items SET position = :position WHERE id = :id")
+    protected abstract suspend fun setPosition(id: String, position: Int)
+
+    /**
+     * Writes new positions and queues an UPDATE for each item in one transaction, so a sync
+     * can't replace the items between the two. A not-yet-created item stays a CREATE.
+     */
+    @Transaction
+    open suspend fun applyPositions(positions: Map<String, Int>, queuedAt: Long) {
+        positions.forEach { (id, position) ->
+            setPosition(id, position)
+            val type = if (op(id)?.type == OpType.CREATE) OpType.CREATE else OpType.UPDATE
+            upsertOp(PendingOp(id, type, queuedAt))
+        }
+    }
 }
