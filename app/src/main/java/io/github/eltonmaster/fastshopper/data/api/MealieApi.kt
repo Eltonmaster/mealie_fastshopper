@@ -1,5 +1,6 @@
 package io.github.eltonmaster.fastshopper.data.api
 
+import kotlinx.serialization.json.JsonObject
 import okhttp3.ResponseBody
 import retrofit2.http.Body
 import retrofit2.http.DELETE
@@ -59,4 +60,20 @@ interface MealieApi {
 
     @DELETE("api/households/shopping/items")
     suspend fun deleteItems(@Query("ids") ids: List<String>): ResponseBody
+
+    // ---- List management ---------------------------------------------------------------------
+
+    @POST("api/households/shopping/lists")
+    suspend fun createShoppingList(@Body list: ShoppingListCreate): ShoppingListSummary
+
+    /** The list exactly as Mealie returns it, so a rename can send every field back unchanged. */
+    @GET("api/households/shopping/lists/{id}")
+    suspend fun getShoppingListJson(@Path("id") id: String): JsonObject
+
+    /** Replaces the whole list, items included. Build the body with [io.github.eltonmaster.fastshopper.data.ListEdit.renamed]. */
+    @PUT("api/households/shopping/lists/{id}")
+    suspend fun updateShoppingList(@Path("id") id: String, @Body list: JsonObject): ResponseBody
+
+    @DELETE("api/households/shopping/lists/{id}")
+    suspend fun deleteShoppingList(@Path("id") id: String): ResponseBody
 }

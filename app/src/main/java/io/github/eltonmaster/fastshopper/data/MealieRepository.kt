@@ -7,6 +7,7 @@ import io.github.eltonmaster.fastshopper.data.api.UnitCreate
 import io.github.eltonmaster.fastshopper.data.api.MealieApi
 import io.github.eltonmaster.fastshopper.data.api.MealieClient
 import io.github.eltonmaster.fastshopper.data.api.ShoppingList
+import io.github.eltonmaster.fastshopper.data.api.ShoppingListCreate
 import io.github.eltonmaster.fastshopper.data.api.ShoppingListItem
 import io.github.eltonmaster.fastshopper.data.api.ShoppingListSummary
 import io.github.eltonmaster.fastshopper.data.api.UserSelf
@@ -470,6 +471,52 @@ class MealieRepository(
             }
         }
         return dao.pendingOps().isEmpty()
+    }
+
+    // ---- List management ---------------------------------------------------------------------
+    // These need the server: Mealie hands out list ids, and a rename has to send the list's
+    // current items back. Offline they fail and change nothing.
+
+    /** Creates a list in Mealie and caches it. */
+    suspend fun createList(name: String): Result<ShoppingListSummary> = runCatching {
+        val created = api().createShoppingList(ShoppingListCreate(name = name))
+        dao.upsertList(ListEntity(created.id, created.name ?: name))
+        created
+    }
+
+    /**
+     * Renames a list. Mealie's PUT replaces the whole list including its items, so this fetches
+     * the list fresh and sends it back with only the name changed (see [ListEdit.renamed]).
+     */
+    suspend fun renameList(listId: String, name: String): Result<Unit> = runCatching {
+        // Under the sync lock so our own outbox can't change an item between the read and the
+        // write (the write would undo it). Queued changes go out first so the copy is current.
+        syncLock.withLock {
+            flushLocked()
+            val api = api()
+            val body = ListEdit.renamed(api.getShoppingListJson(listId), name)
+                ?: throw SerializationException("The list came back without its items")
+            api.updateShoppingList(listId, body).close()
+            dao.renameList(listId, name)
+        }
+    }
+
+    /** Deletes a list in Mealie, then forgets it locally and unsets it as the default list. */
+    suspend fun deleteList(listId: String): Result<Unit> = runCatching {
+        syncLock.withLock {
+            try {
+                api().deleteShoppingList(listId).close()
+            } catch (e: HttpException) {
+                if (e.code() != 404) throw e // already deleted elsewhere: just clean up
+            }
+            dao.forgetList(listId)
+        }
+        if (settingsStore.settings.first().defaultListId == listId) settingsStore.setDefaultList(null)
+    }
+
+    /** How many items a list has on the server, checked ones included. */
+    suspend fun listItemCount(listId: String): Result<Int> = runCatching {
+        api().getShoppingList(listId).listItems.size
     }
 
     private companion object {

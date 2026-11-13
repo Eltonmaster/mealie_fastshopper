@@ -2,7 +2,7 @@
 
 An Android companion app for [Mealie](https://mealie.io) that makes adding and ticking off shopping list entries fast, even with bad signal in the shop.
 
-**Status:** early development. Working: connect to a server, pick lists, default list, list grouped by label, tap to check, tap the amount for +/− buttons, reorder items within a section by dragging (⋮ → Reorder items), long press to edit (name, amount, container, note, label), searchable label picker that can create new labels, swipe to delete with undo, offline queue with background sync, add sheet with food autocomplete and remembered containers. Items someone else added or changed get a "new" or "changed" badge until you've seen them, with a count per list. Optional notifications when someone changes a list while the app is closed. checked items are cleared automatically after a delay you choose in Settings (12 hours by default, or never).
+**Status:** early development. Working: connect to a server, pick lists, create, rename and delete lists, default list, list grouped by label, tap to check, tap the amount for +/− buttons, reorder items within a section by dragging (⋮ → Reorder items), long press to edit (name, amount, container, note, label), searchable label picker that can create new labels, swipe to delete with undo, offline queue with background sync, add sheet with food autocomplete and remembered containers. Items someone else added or changed get a "new" or "changed" badge until you've seen them, with a count per list. Optional notifications when someone changes a list while the app is closed. checked items are cleared automatically after a delay you choose in Settings (12 hours by default, or never).
 
 ## Install
 
@@ -20,7 +20,7 @@ Want the newest unreleased build? Every push to `main` and every pull request bu
 
 1. In Mealie, open **Profile → API Tokens** and create a token.
 2. Open the app, enter your server URL (e.g. `https://mealie.example.com`) and paste the token.
-3. Pick a list. Tap the star to open that list automatically on launch.
+3. Pick a list, or tap **New list** to create one. Tap the star to open that list automatically on launch. The ⋮ next to a list renames or deletes it.
 
 ## Settings
 

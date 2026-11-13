@@ -112,3 +112,8 @@ data class LabelCreate(
 data class UnitCreate(
     val name: String,
 )
+
+@Serializable
+data class ShoppingListCreate(
+    val name: String,
+)
