@@ -325,6 +325,22 @@ class MealieRepository(
         scheduleSync()
     }
 
+    // ---- Quantity stepper --------------------------------------------------------------------
+
+    private val quantityLock = Mutex()
+
+    /**
+     * Changes an open item's quantity by [delta] (+1 or −1) locally and queues an UPDATE. Quick
+     * taps collapse into one request, because the outbox keeps one pending change per item.
+     * The lock keeps two quick taps from reading the same old quantity.
+     */
+    suspend fun changeQuantity(itemId: String, delta: Int) = quantityLock.withLock {
+        val item = item(itemId)?.takeUnless { it.checked } ?: return@withLock
+        val next = QuantityStep.step(item.quantity, delta) ?: return@withLock
+        dao.upsertItem(item.copy(quantity = next))
+        queue(itemId, OpType.UPDATE)
+    }
+
     // ---- Auto-clear --------------------------------------------------------------------------
 
     /** Deletes items that were checked more than 12 hours ago, then sends the deletes. */
