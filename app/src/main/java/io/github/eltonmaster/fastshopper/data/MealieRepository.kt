@@ -358,12 +358,19 @@ class MealieRepository(
 
     // ---- Auto-clear --------------------------------------------------------------------------
 
-    /** Deletes items that were checked more than 12 hours ago, then sends the deletes. */
+    fun observeAutoClearDelay(): Flow<AutoClearDelay> = settingsStore.autoClearDelay
+
+    /**
+     * Deletes items that were checked longer ago than the delay chosen in Settings, then sends the
+     * deletes. The setting is read on every sync, so a change applies right away.
+     */
     private suspend fun clearExpiredLocked(listId: String) {
+        val delay = settingsStore.autoClearDelay.first()
+        if (delay == AutoClearDelay.NEVER) return
         val now = java.time.Instant.now()
         val pending = dao.pendingItemIds().toSet()
         val expired = dao.itemsOfList(listId).filter {
-            it.id !in pending && AutoClear.isExpired(it.checked, it.updatedAt, now)
+            it.id !in pending && AutoClear.isExpired(it.checked, it.updatedAt, now, delay)
         }
         if (expired.isEmpty()) return
         val queuedAt = System.currentTimeMillis()

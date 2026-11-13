@@ -28,6 +28,7 @@ class SettingsStore(private val context: Context) {
         val USER_NAME = stringPreferencesKey("user_name")
         val DEFAULT_LIST = stringPreferencesKey("default_list_id")
         val THEME = stringPreferencesKey("theme_mode")
+        val AUTO_CLEAR_DELAY = stringPreferencesKey("auto_clear_delay")
     }
 
     val settings: Flow<Settings> = context.dataStore.data.map { prefs ->
@@ -47,6 +48,14 @@ class SettingsStore(private val context: Context) {
         context.dataStore.edit { prefs -> prefs[Keys.THEME] = mode.key }
     }
 
+    val autoClearDelay: Flow<AutoClearDelay> = context.dataStore.data
+        .map { prefs -> AutoClearDelay.fromKey(prefs[Keys.AUTO_CLEAR_DELAY]) }
+        .distinctUntilChanged()
+
+    suspend fun setAutoClearDelay(delay: AutoClearDelay) {
+        context.dataStore.edit { prefs -> prefs[Keys.AUTO_CLEAR_DELAY] = delay.key }
+    }
+
     suspend fun saveLogin(serverUrl: String, token: String, userName: String?) {
         context.dataStore.edit { prefs ->
             prefs[Keys.SERVER_URL] = serverUrl
@@ -61,12 +70,14 @@ class SettingsStore(private val context: Context) {
         }
     }
 
-    /** Forgets the login and list choices; the theme is a device preference and stays. */
+    /** Forgets the login and list choices; the theme and auto-clear delay are phone preferences and stay. */
     suspend fun clear() {
         context.dataStore.edit { prefs ->
             val theme = prefs[Keys.THEME]
+            val autoClearDelay = prefs[Keys.AUTO_CLEAR_DELAY]
             prefs.clear()
             if (theme != null) prefs[Keys.THEME] = theme
+            if (autoClearDelay != null) prefs[Keys.AUTO_CLEAR_DELAY] = autoClearDelay
         }
     }
 }

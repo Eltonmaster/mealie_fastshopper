@@ -11,7 +11,7 @@ import androidx.work.WorkerParameters
 import io.github.eltonmaster.fastshopper.FastShopperApp
 import java.util.concurrent.TimeUnit
 
-/** Every few hours: sync cached lists, which also deletes items checked more than 12 hours ago. */
+/** Every few hours: sync cached lists, which also deletes items checked longer ago than the chosen delay. */
 class AutoClearWorker(context: Context, params: WorkerParameters) : CoroutineWorker(context, params) {
     override suspend fun doWork(): Result {
         val container = (applicationContext as FastShopperApp).container

@@ -2,6 +2,7 @@ package io.github.eltonmaster.fastshopper.ui.list
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import io.github.eltonmaster.fastshopper.data.AutoClearDelay
 import io.github.eltonmaster.fastshopper.data.ItemFormat
 import io.github.eltonmaster.fastshopper.data.MealieRepository
 import io.github.eltonmaster.fastshopper.data.db.ItemEntity
@@ -38,6 +39,7 @@ data class ShoppingListUiState(
     val sections: List<Section> = emptyList(),
     val checked: List<RowItem> = emptyList(),
     val checkedExpanded: Boolean = false,
+    val autoClearDelay: AutoClearDelay = AutoClearDelay.DEFAULT,
     val pendingCount: Int = 0,
     val loadedOnce: Boolean = false,
     val refreshing: Boolean = false,
@@ -70,7 +72,8 @@ class ShoppingListViewModel(
         repository.observePendingCount(),
         status,
         checkedExpanded,
-    ) { (items, labels, lists), pending, s, expanded ->
+        repository.observeAutoClearDelay(),
+    ) { (items, labels, lists), pending, s, expanded, autoClearDelay ->
         val (open, done) = items.partition { !it.checked }
         ShoppingListUiState(
             listName = lists.firstOrNull { it.id == listId }?.name.orEmpty(),
@@ -78,6 +81,7 @@ class ShoppingListViewModel(
             sections = groupByLabel(open, labels),
             checked = done.map { it.toRow() },
             checkedExpanded = expanded,
+            autoClearDelay = autoClearDelay,
             pendingCount = pending,
             loadedOnce = s.loadedOnce || items.isNotEmpty(),
             refreshing = s.refreshing,

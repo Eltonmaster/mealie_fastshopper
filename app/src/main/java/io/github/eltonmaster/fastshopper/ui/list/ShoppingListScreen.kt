@@ -322,6 +322,7 @@ fun ShoppingListScreen(
                         checkedSection(
                             items = state.checked,
                             expanded = state.checkedExpanded,
+                            clearHint = state.autoClearDelay.hint,
                             onToggleExpanded = viewModel::toggleCheckedExpanded,
                             onToggle = viewModel::toggle,
                             onEdit = onEdit,
@@ -395,6 +396,7 @@ private fun SectionHeader(title: String) {
 private fun LazyListScope.checkedSection(
     items: List<RowItem>,
     expanded: Boolean,
+    clearHint: String,
     onToggleExpanded: () -> Unit,
     onToggle: (RowItem) -> Unit,
     onEdit: (RowItem) -> Unit,
@@ -427,7 +429,7 @@ private fun LazyListScope.checkedSection(
             }
             if (expanded) {
                 Text(
-                    "Checked items are removed automatically after 12 hours.",
+                    clearHint,
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.padding(horizontal = 16.dp),
