@@ -49,6 +49,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.unit.dp
 import io.github.eltonmaster.fastshopper.data.QuantityStep
+import io.github.eltonmaster.fastshopper.data.RemoteChanges
 import kotlinx.coroutines.delay
 
 /** How long the +/− buttons stay after the last tap. */
@@ -178,13 +179,17 @@ fun ItemRow(
                 onCheckedChange = if (reordering) null else { _ -> onToggle() },
             )
             Column(Modifier.weight(1f), verticalArrangement = Arrangement.Center) {
-                Text(
-                    item.title,
-                    style = MaterialTheme.typography.bodyLarge,
-                    textDecoration = if (item.checked) TextDecoration.LineThrough else null,
-                    color = if (item.checked) MaterialTheme.colorScheme.onSurfaceVariant
-                    else MaterialTheme.colorScheme.onSurface,
-                )
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(
+                        item.title,
+                        style = MaterialTheme.typography.bodyLarge,
+                        textDecoration = if (item.checked) TextDecoration.LineThrough else null,
+                        color = if (item.checked) MaterialTheme.colorScheme.onSurfaceVariant
+                        else MaterialTheme.colorScheme.onSurface,
+                        modifier = Modifier.weight(1f, fill = false),
+                    )
+                    item.remoteChange?.let { RemoteChangeBadge(it) }
+                }
                 item.subtitle?.let {
                     Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
@@ -274,5 +279,24 @@ private fun QuantityStepper(item: RowItem, onStep: (Int) -> Unit) {
         IconButton(onClick = { onStep(1) }) {
             Icon(Icons.Filled.Add, contentDescription = "Increase amount")
         }
+    }
+}
+
+/** Small "new" or "changed" pill next to an item someone else added or changed. */
+@Composable
+private fun RemoteChangeBadge(change: String) {
+    val isNew = change == RemoteChanges.NEW
+    Surface(
+        color = if (isNew) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.tertiaryContainer,
+        contentColor = if (isNew) MaterialTheme.colorScheme.onPrimaryContainer
+        else MaterialTheme.colorScheme.onTertiaryContainer,
+        shape = MaterialTheme.shapes.small,
+        modifier = Modifier.padding(start = 8.dp),
+    ) {
+        Text(
+            if (isNew) "new" else "changed",
+            style = MaterialTheme.typography.labelSmall,
+            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
+        )
     }
 }

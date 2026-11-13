@@ -6,6 +6,7 @@ import androidx.room.OnConflictStrategy
 import androidx.room.Query
 import androidx.room.Transaction
 import androidx.room.Upsert
+import io.github.eltonmaster.fastshopper.data.RemoteChanges
 import kotlinx.coroutines.flow.Flow
 
 @Dao
@@ -68,24 +69,39 @@ abstract class ShoppingDao {
     @Query("DELETE FROM pending_ops WHERE itemId = :itemId AND createdAt = :createdAt")
     abstract suspend fun deleteOpIfUnchanged(itemId: String, createdAt: Long): Int
 
+    /** Replaces the lists with the server's, keeping when each one was last synced here. */
     @Transaction
     open suspend fun replaceLists(lists: List<ListEntity>) {
+        val syncedAt = allLists().associate { it.id to it.lastSyncedAt }
         deleteLists()
-        insertLists(lists)
+        insertLists(lists.map { it.copy(lastSyncedAt = it.lastSyncedAt ?: syncedAt[it.id]) })
     }
 
-    /** Replaces a list with the server's copy, keeping items that still have local changes queued. */
+    /**
+     * Replaces a list with the server's copy, keeping items that still have local changes queued.
+     * Marks what someone else added or changed (see [RemoteChanges.mark]) and keeps existing
+     * markers. Runs as one transaction so a marker cleared meanwhile can't come back.
+     */
     @Transaction
     open suspend fun replaceListFromServer(
         listId: String,
         items: List<ItemEntity>,
         labels: List<LabelOrderEntity>,
+        ownItemIds: Set<String>,
+        syncedAt: Long,
     ) {
         val pending = pendingItemIds().toSet()
+        val marked = RemoteChanges.mark(
+            cached = itemsOfList(listId),
+            incoming = items,
+            ownItemIds = ownItemIds + pending,
+            firstSync = listSyncedAt(listId) == null,
+        )
         deleteSyncedItems(listId)
-        upsertItems(items.filter { it.id !in pending })
+        upsertItems(marked.filter { it.id !in pending })
         deleteLabelOrder(listId)
         insertLabelOrder(labels)
+        setListSyncedAt(listId, syncedAt)
     }
 
     @Query("DELETE FROM items")
@@ -212,4 +228,27 @@ abstract class ShoppingDao {
             upsertOp(PendingOp(id, type, queuedAt))
         }
     }
+
+    // ---- "New" markers -----------------------------------------------------------------------
+
+    @Query("SELECT * FROM lists")
+    abstract suspend fun allLists(): List<ListEntity>
+
+    @Query("SELECT lastSyncedAt FROM lists WHERE id = :listId")
+    abstract suspend fun listSyncedAt(listId: String): Long?
+
+    @Query("UPDATE lists SET lastSyncedAt = :at WHERE id = :listId")
+    abstract suspend fun setListSyncedAt(listId: String, at: Long)
+
+    /** Open items per list that someone else added or changed and you haven't seen yet. */
+    @Query(
+        "SELECT listId, COUNT(*) AS count FROM items " +
+            "WHERE remoteChange IS NOT NULL AND checked = 0 AND pendingDelete = 0 GROUP BY listId"
+    )
+    abstract fun observeRemoteChangeCounts(): Flow<List<ListChangeCount>>
+
+    @Query("UPDATE items SET remoteChange = NULL, remoteChangeNotified = 0 WHERE id IN (:itemIds)")
+    abstract suspend fun clearRemoteChanges(itemIds: List<String>)
 }
+
+data class ListChangeCount(val listId: String, val count: Int)

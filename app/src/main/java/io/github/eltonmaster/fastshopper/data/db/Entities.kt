@@ -1,5 +1,6 @@
 package io.github.eltonmaster.fastshopper.data.db
 
+import androidx.room.ColumnInfo
 import androidx.room.Entity
 import androidx.room.Index
 import androidx.room.PrimaryKey
@@ -8,6 +9,8 @@ import androidx.room.PrimaryKey
 data class ListEntity(
     @PrimaryKey val id: String,
     val name: String,
+    /** When this phone last synced the list; null until it was opened here once. */
+    val lastSyncedAt: Long? = null,
 )
 
 @Entity(tableName = "items", indices = [Index("listId")])
@@ -30,6 +33,13 @@ data class ItemEntity(
     val updatedAt: String?,
     /** Hidden locally while a delete waits to be sent (or undone). */
     val pendingDelete: Boolean = false,
+    /**
+     * Someone else added (`NEW`) or changed (`CHANGED`) this item since you last looked at the
+     * list, or null. See [io.github.eltonmaster.fastshopper.data.RemoteChanges].
+     */
+    val remoteChange: String? = null,
+    /** Whether a background notification already told you about [remoteChange]. */
+    @ColumnInfo(defaultValue = "0") val remoteChangeNotified: Boolean = false,
 )
 
 @Entity(tableName = "label_order", primaryKeys = ["listId", "labelId"])

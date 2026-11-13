@@ -22,6 +22,7 @@ import io.github.eltonmaster.fastshopper.data.db.PendingOp
 import io.github.eltonmaster.fastshopper.data.db.ShoppingDao
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.serialization.SerializationException
@@ -110,11 +111,13 @@ class MealieRepository(
     /** Sends queued changes, then pulls the list from the server into the local cache. */
     suspend fun sync(listId: String): Result<Unit> = runCatching {
         syncLock.withLock {
+            // Changes this phone sends now are its own, not someone else's: never mark them.
+            val own = dao.pendingItemIds().toSet()
             flushLocked()
             val list = api().getShoppingList(listId)
             val known = dao.itemIds(listId).toSet()
             val items = list.toItemEntities()
-            dao.replaceListFromServer(listId, items, list.toLabelOrder())
+            dao.replaceListFromServer(listId, items, list.toLabelOrder(), own, System.currentTimeMillis())
             // Learn the usual container from items we haven't seen before, whoever added them.
             val now = System.currentTimeMillis()
             items.filter { it.id !in known && it.foodId != null }
@@ -259,6 +262,7 @@ class MealieRepository(
         val keepUnit = unit == null && request.unitId != null && request.unitId == current.unitId
         val keepLabel = label == null && request.labelId != null && request.labelId == current.labelId
         val updated = current.copy(
+            remoteChange = null,
             quantity = request.quantity,
             note = (noteParts + request.note.trim()).filter { it.isNotEmpty() }.joinToString(" "),
             display = "",
@@ -287,7 +291,7 @@ class MealieRepository(
 
     suspend fun setChecked(itemId: String, checked: Boolean) {
         val item = dao.item(itemId) ?: return
-        dao.upsertItem(item.copy(checked = checked))
+        dao.upsertItem(item.copy(checked = checked, remoteChange = null))
         queue(itemId, OpType.UPDATE)
     }
 
@@ -337,7 +341,7 @@ class MealieRepository(
     suspend fun changeQuantity(itemId: String, delta: Int) = quantityLock.withLock {
         val item = item(itemId)?.takeUnless { it.checked } ?: return@withLock
         val next = QuantityStep.step(item.quantity, delta) ?: return@withLock
-        dao.upsertItem(item.copy(quantity = next))
+        dao.upsertItem(item.copy(quantity = next, remoteChange = null))
         queue(itemId, OpType.UPDATE)
     }
 
@@ -386,6 +390,17 @@ class MealieRepository(
         var ok = true
         dao.cachedListIds().forEach { id -> if (sync(id).isFailure) ok = false }
         return ok
+    }
+
+    // ---- "New" markers -----------------------------------------------------------------------
+
+    /** Per list id, how many open items someone else added or changed that you haven't seen. */
+    fun observeRemoteChangeCounts(): Flow<Map<String, Int>> =
+        dao.observeRemoteChangeCounts().map { rows -> rows.associate { it.listId to it.count } }
+
+    /** Forgets the "new"/"changed" markers of these items, once you've seen them. */
+    suspend fun clearRemoteChanges(itemIds: Collection<String>) {
+        if (itemIds.isNotEmpty()) dao.clearRemoteChanges(itemIds.toList())
     }
 
     // ---- Outbox ------------------------------------------------------------------------------

@@ -4,6 +4,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
@@ -34,6 +35,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
@@ -118,10 +120,11 @@ fun ListPickerScreen(
                     }
                     items(state.lists, key = { it.id }) { list ->
                         val isDefault = list.id == state.defaultListId
+                        val newCount = state.newCounts[list.id] ?: 0
                         ListItem(
                             headlineContent = { Text(list.name ?: "Unnamed list") },
-                            supportingContent = if (isDefault) {
-                                { Text("Default list") }
+                            supportingContent = if (isDefault || newCount > 0) {
+                                { ListSupportingText(isDefault, newCount) }
                             } else null,
                             trailingContent = {
                                 IconButton(onClick = { viewModel.toggleDefault(list.id) }) {
@@ -147,6 +150,22 @@ fun ListPickerScreen(
                     }
                 }
             }
+        }
+    }
+}
+
+/** "Default list", "3 new", or both. */
+@Composable
+private fun ListSupportingText(isDefault: Boolean, newCount: Int) {
+    Row {
+        if (isDefault) Text("Default list")
+        if (isDefault && newCount > 0) Text(" · ")
+        if (newCount > 0) {
+            Text(
+                "$newCount new",
+                color = MaterialTheme.colorScheme.primary,
+                fontWeight = FontWeight.SemiBold,
+            )
         }
     }
 }
