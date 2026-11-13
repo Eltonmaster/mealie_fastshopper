@@ -18,6 +18,9 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.File
+import java.io.InterruptedIOException
+import java.net.ConnectException
+import java.net.UnknownHostException
 
 sealed interface UpdateState {
     data object Hidden : UpdateState
@@ -27,7 +30,19 @@ sealed interface UpdateState {
     data class Failed(val update: AvailableUpdate, val message: String) : UpdateState
 }
 
-/** Checks GitHub Releases once per app start and drives the update dialog. */
+/** Result of the latest check, shown in Settings → About. */
+sealed interface UpdateCheck {
+    data object Idle : UpdateCheck
+    data object Checking : UpdateCheck
+    data object UpToDate : UpdateCheck
+    data class Found(val update: AvailableUpdate) : UpdateCheck
+    data class Failed(val message: String) : UpdateCheck
+}
+
+/**
+ * Checks GitHub Releases once per app start and drives the update dialog. Settings can also
+ * check on demand and start a download; the dialog then shows progress and opens the installer.
+ */
 class UpdateViewModel(
     private val checker: UpdateChecker,
     private val downloadDir: File,
@@ -36,23 +51,51 @@ class UpdateViewModel(
     private val _state = MutableStateFlow<UpdateState>(UpdateState.Hidden)
     val state: StateFlow<UpdateState> = _state.asStateFlow()
 
+    private val _check = MutableStateFlow<UpdateCheck>(UpdateCheck.Idle)
+    val check: StateFlow<UpdateCheck> = _check.asStateFlow()
+
     private var downloadJob: Job? = null
+    private var checkJob: Job? = null
 
     init {
-        if (checkOnStart) check()
+        if (checkOnStart) checkOnStart()
     }
 
-    private fun check() {
-        viewModelScope.launch {
+    private fun checkOnStart() {
+        _check.value = UpdateCheck.Checking
+        checkJob = viewModelScope.launch {
             // Leftovers from an earlier update are no longer needed once it is installed.
             withContext(Dispatchers.IO) { downloadDir.deleteRecursively() }
-            // A failed check stays silent: no network in the shop shouldn't nag.
-            checker.check().getOrNull()?.let { _state.value = UpdateState.Available(it) }
+            checker.check()
+                .onSuccess { update ->
+                    _check.value = if (update == null) UpdateCheck.UpToDate else UpdateCheck.Found(update)
+                    if (update != null) _state.value = UpdateState.Available(update)
+                }
+                // A failed check stays silent: no network in the shop shouldn't nag.
+                .onFailure { _check.value = UpdateCheck.Idle }
         }
     }
 
+    /** Checks now, on request from Settings. The result shows there rather than in a dialog. */
+    fun checkNow() {
+        if (checkJob?.isActive == true) return
+        _check.value = UpdateCheck.Checking
+        checkJob = viewModelScope.launch {
+            checker.check()
+                .onSuccess { update ->
+                    _check.value = if (update == null) UpdateCheck.UpToDate else UpdateCheck.Found(update)
+                }
+                .onFailure { e -> _check.value = UpdateCheck.Failed(e.toCheckMessage()) }
+        }
+    }
+
+    /** Retries the update the dialog is showing. */
     fun download() {
-        val update = currentUpdate() ?: return
+        currentUpdate()?.let(::download)
+    }
+
+    /** Downloads [update]; the dialog shows progress and opens the installer when done. */
+    fun download(update: AvailableUpdate) {
         downloadJob?.cancel()
         _state.value = UpdateState.Downloading(update, progress = null)
         downloadJob = viewModelScope.launch {
@@ -86,6 +129,12 @@ class UpdateViewModel(
         is UpdateState.Downloading -> s.update
         is UpdateState.ReadyToInstall -> s.update
         is UpdateState.Failed -> s.update
+    }
+
+    private fun Throwable.toCheckMessage(): String = when (this) {
+        is UnknownHostException, is ConnectException, is InterruptedIOException ->
+            "GitHub couldn't be reached. Check your internet connection."
+        else -> message ?: "Something went wrong."
     }
 
     companion object {

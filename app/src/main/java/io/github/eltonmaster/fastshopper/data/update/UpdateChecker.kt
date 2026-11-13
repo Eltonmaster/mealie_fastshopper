@@ -105,5 +105,6 @@ class UpdateChecker(
     companion object {
         const val LATEST_RELEASE_URL =
             "https://api.github.com/repos/Eltonmaster/mealie_fastshopper/releases/latest"
+        const val RELEASES_PAGE_URL = "https://github.com/Eltonmaster/mealie_fastshopper/releases"
     }
 }

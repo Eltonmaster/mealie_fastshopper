@@ -11,6 +11,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.filled.StarBorder
 import androidx.compose.material3.CircularProgressIndicator
@@ -43,6 +44,7 @@ import io.github.eltonmaster.fastshopper.ui.appViewModelFactory
 fun ListPickerScreen(
     onOpenList: (String) -> Unit,
     onSignedOut: () -> Unit,
+    onOpenSettings: () -> Unit,
     viewModel: ListPickerViewModel = viewModel(
         factory = appViewModelFactory { ListPickerViewModel(it.repository, it.settingsStore) }
     ),
@@ -63,6 +65,14 @@ fun ListPickerScreen(
                             Icon(Icons.Filled.MoreVert, contentDescription = "More")
                         }
                         DropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }) {
+                            DropdownMenuItem(
+                                text = { Text("Settings") },
+                                leadingIcon = { Icon(Icons.Filled.Settings, contentDescription = null) },
+                                onClick = {
+                                    menuOpen = false
+                                    onOpenSettings()
+                                },
+                            )
                             DropdownMenuItem(
                                 text = { Text("Sign out") },
                                 onClick = {

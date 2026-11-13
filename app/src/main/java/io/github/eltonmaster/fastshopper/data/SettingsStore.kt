@@ -7,6 +7,7 @@ import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.map
 
 private val Context.dataStore: DataStore<Preferences> by preferencesDataStore(name = "settings")
@@ -26,6 +27,7 @@ class SettingsStore(private val context: Context) {
         val TOKEN = stringPreferencesKey("token_encrypted")
         val USER_NAME = stringPreferencesKey("user_name")
         val DEFAULT_LIST = stringPreferencesKey("default_list_id")
+        val THEME = stringPreferencesKey("theme_mode")
     }
 
     val settings: Flow<Settings> = context.dataStore.data.map { prefs ->
@@ -35,6 +37,14 @@ class SettingsStore(private val context: Context) {
             userName = prefs[Keys.USER_NAME],
             defaultListId = prefs[Keys.DEFAULT_LIST],
         )
+    }.distinctUntilChanged() // changing the theme shouldn't look like a login change
+
+    val themeMode: Flow<ThemeMode> = context.dataStore.data
+        .map { prefs -> ThemeMode.fromKey(prefs[Keys.THEME]) }
+        .distinctUntilChanged()
+
+    suspend fun setThemeMode(mode: ThemeMode) {
+        context.dataStore.edit { prefs -> prefs[Keys.THEME] = mode.key }
     }
 
     suspend fun saveLogin(serverUrl: String, token: String, userName: String?) {
@@ -51,7 +61,12 @@ class SettingsStore(private val context: Context) {
         }
     }
 
+    /** Forgets the login and list choices; the theme is a device preference and stays. */
     suspend fun clear() {
-        context.dataStore.edit { it.clear() }
+        context.dataStore.edit { prefs ->
+            val theme = prefs[Keys.THEME]
+            prefs.clear()
+            if (theme != null) prefs[Keys.THEME] = theme
+        }
     }
 }
